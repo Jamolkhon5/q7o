@@ -1,0 +1,45 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /opt/apps/q7o
+          
+          # Сохраняем production настройки
+          cp .env.production .env.production.backup
+          
+          # Обновляем код
+          git pull origin main
+          
+          # Восстанавливаем production настройки
+          cp .env.production.backup .env.production
+          cp .env.production .env
+          
+          # Пересобираем и перезапускаем контейнеры
+          docker-compose down
+          docker-compose build --no-cache
+          docker-compose up -d
+          
+          # Перезапускаем LiveKit
+          docker-compose -f docker-compose.livekit.yml down
+          docker-compose -f docker-compose.livekit.yml up -d
+          
+          # Проверяем статус
+          docker ps
+          
+          echo "Deploy completed!"
