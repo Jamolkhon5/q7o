@@ -31,8 +31,11 @@ func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitC
 }
 
 func (s *Service) GetLiveKitURL() string {
-	// Для мобильных клиентов возвращаем публичный URL
-	// В production это должен быть wss://your-domain.com
+	// ИЗМЕНЕНО: Сначала проверяем PublicHost для внешних клиентов
+	if s.cfg.PublicHost != "" {
+		return s.cfg.PublicHost
+	}
+	// Затем возвращаем основной Host
 	if s.cfg.Host != "" {
 		return s.cfg.Host
 	}

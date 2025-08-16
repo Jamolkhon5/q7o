@@ -42,6 +42,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key_here_min_32_chars}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your_refresh_secret_key_32_chars}
       - LIVEKIT_HOST=ws://livekit:7880
+      - LIVEKIT_PUBLIC_HOST=wss://neftemodel.ru:7880  # ДОБАВЛЕНО!
       - LIVEKIT_API_KEY=APIsUhpPAFFUS3t
       - LIVEKIT_API_SECRET=Fmgo7juBGyFYTQ6o6B7eC6cX9gftNEw46BoFffaZ2DzD
       - SMTP_HOST=${SMTP_HOST:-smtp.mail.ru}
