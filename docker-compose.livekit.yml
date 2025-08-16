@@ -10,13 +10,13 @@ services:
     image: livekit/livekit-server:latest
     command: --config /config/livekit.yaml
     environment:
-      - LIVEKIT_RTC.NODE_IP=10.0.2.2
-      - LIVEKIT_RTC.ANNOUNCED_IP=10.0.2.2
+      - LIVEKIT_RTC.NODE_IP=217.114.8.206  # ИЗМЕНЕНО
+      - LIVEKIT_RTC.ANNOUNCED_IP=217.114.8.206  # ИЗМЕНЕНО
     volumes:
       - ./config:/config
     ports:
-      - "7880:7880"
-      - "7881:7881"
+      - "7881:7881"  # ИЗМЕНЕНО с 7880:7880
+      - "7882:7882"  # ИЗМЕНЕНО с 7881:7881
     networks:
       - q7o_network
 

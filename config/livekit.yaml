@@ -1,7 +1,7 @@
-port: 7880
+port: 7881  # ИЗМЕНЕНО с 7880
 log_level: debug
 rtc:
-  tcp_port: 7881
+  tcp_port: 7882  # ИЗМЕНЕНО с 7881
   port_range_start: 50000
   port_range_end: 60000
   use_external_ip: true
