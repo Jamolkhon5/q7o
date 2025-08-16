@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: q7o_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-q7o}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-q7o_secret}
+      POSTGRES_DB: ${DB_NAME:-q7o_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - q7o_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U q7o -d q7o_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: q7o_app
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - APP_PORT=${APP_PORT:-8080}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-q7o}
+      - DB_PASSWORD=${DB_PASSWORD:-q7o_secret}
+      - DB_NAME=${DB_NAME:-q7o_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key_here_min_32_chars}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your_refresh_secret_key_32_chars}
+      - LIVEKIT_HOST=ws://livekit:7880
+      - LIVEKIT_API_KEY=APIsUhpPAFFUS3t
+      - LIVEKIT_API_SECRET=Fmgo7juBGyFYTQ6o6B7eC6cX9gftNEw46BoFffaZ2DzD
+      - SMTP_HOST=${SMTP_HOST:-smtp.mail.ru}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-info.synchron@inbox.ru}
+      - SMTP_PASS=${SMTP_PASS:-A9DrferiSPXsZkYrieLi}
+      - SMTP_FROM=${SMTP_FROM:-info.synchron@inbox.ru}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - q7o_network
+    volumes:
+      - ./web:/app/web
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  q7o_network:
+    external: true

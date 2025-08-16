@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:alpine
+    networks:
+      - q7o_network
+    ports:
+      - "6379:6379"
+
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /config/livekit.yaml
+    environment:
+      - LIVEKIT_RTC.NODE_IP=10.0.2.2
+      - LIVEKIT_RTC.ANNOUNCED_IP=10.0.2.2
+    volumes:
+      - ./config:/config
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+    networks:
+      - q7o_network
+
+networks:
+  q7o_network:
+    external: true
