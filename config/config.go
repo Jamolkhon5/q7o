@@ -39,9 +39,10 @@ type JWTConfig struct {
 }
 
 type LiveKitConfig struct {
-	Host      string
-	APIKey    string
-	APISecret string
+	Host       string
+	PublicHost string // ДОБАВЛЕНО
+	APIKey     string
+	APISecret  string
 }
 
 type SMTPConfig struct {
@@ -80,9 +81,10 @@ func Load() *Config {
 			RefreshDays:   7,
 		},
 		LiveKit: LiveKitConfig{
-			Host:      getEnv("LIVEKIT_HOST", "localhost:7880"),
-			APIKey:    getEnv("LIVEKIT_API_KEY", "devkey"),
-			APISecret: getEnv("LIVEKIT_API_SECRET", "secret"),
+			Host:       getEnv("LIVEKIT_HOST", "localhost:7880"),
+			PublicHost: getEnv("LIVEKIT_PUBLIC_HOST", ""), // ДОБАВЛЕНО
+			APIKey:     getEnv("LIVEKIT_API_KEY", "devkey"),
+			APISecret:  getEnv("LIVEKIT_API_SECRET", "secret"),
 		},
 		SMTP: SMTPConfig{
 			Host: getEnv("SMTP_HOST", "smtp.mail.ru"),

@@ -2,6 +2,8 @@ port: 7880
 log_level: debug
 rtc:
   tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
   use_external_ip: true
 
 keys:
@@ -10,5 +12,16 @@ keys:
 redis:
   address: redis:6379
 
+webhook:
+  urls: []
+
 turn:
-  enabled: false
+  enabled: true
+  domain: neftemodel.ru
+  cert_file: ""
+  key_file: ""
+  tls_port: 5349
+  udp_port: 3478
+  relay_range_start: 50000
+  relay_range_end: 60000
+  external_tls: true
