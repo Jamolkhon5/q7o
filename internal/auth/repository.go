@@ -28,7 +28,7 @@ func (r *Repository) SaveRefreshToken(ctx context.Context, userID uuid.UUID, tok
         INSERT INTO sessions (user_id, refresh_token, device_info, expires_at)
         VALUES ($1, $2, $3, $4)
     `
-	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	expiresAt := time.Now().Add(90 * 24 * time.Hour)
 	_, err := r.db.ExecContext(ctx, query, userID, token, deviceInfo, expiresAt)
 
 	// Also save in Redis for fast lookup
@@ -38,7 +38,7 @@ func (r *Repository) SaveRefreshToken(ctx context.Context, userID uuid.UUID, tok
 		"token":   token,
 	}
 	jsonData, _ := json.Marshal(data)
-	r.redis.Set(ctx, key, jsonData, 7*24*time.Hour)
+	r.redis.Set(ctx, key, jsonData, 90*24*time.Hour)
 
 	return err
 }
@@ -82,7 +82,7 @@ func (r *Repository) UpdateRefreshToken(ctx context.Context, userID uuid.UUID, o
 		"token":   newToken,
 	}
 	jsonData, _ := json.Marshal(data)
-	r.redis.Set(ctx, newKey, jsonData, 7*24*time.Hour)
+	r.redis.Set(ctx, newKey, jsonData, 90*24*time.Hour)
 
 	return err
 }
