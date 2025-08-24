@@ -157,3 +157,17 @@ type ResendVerificationRequest struct {
 type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
+
+func (h *Handler) ValidateToken(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+
+	user, err := h.service.ValidateAndGetUser(c.Context(), userID)
+	if err != nil {
+		return response.Unauthorized(c, err.Error())
+	}
+
+	return response.Success(c, fiber.Map{
+		"valid": true,
+		"user":  user,
+	})
+}

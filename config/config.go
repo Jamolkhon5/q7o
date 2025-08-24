@@ -78,7 +78,7 @@ func Load() *Config {
 			Secret:        getEnv("JWT_SECRET", "secret"),
 			RefreshSecret: getEnv("JWT_REFRESH_SECRET", "refresh_secret"),
 			ExpireHours:   1,
-			RefreshDays:   7,
+			RefreshDays:   90,
 		},
 		LiveKit: LiveKitConfig{
 			Host:       getEnv("LIVEKIT_HOST", "localhost:7880"),

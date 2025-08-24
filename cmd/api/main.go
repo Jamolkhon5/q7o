@@ -110,6 +110,7 @@ func main() {
 	authGroup.Post("/verify-email", authHandler.VerifyEmail)
 	authGroup.Post("/resend-verification", authHandler.ResendVerification)
 	authGroup.Post("/logout", auth.RequireAuth(cfg.JWT), authHandler.Logout)
+	authGroup.Post("/validate", auth.RequireAuth(cfg.JWT), authHandler.ValidateToken)
 
 	// User routes
 	userHandler := user.NewHandler(userService)

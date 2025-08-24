@@ -211,3 +211,27 @@ func (s *Service) Logout(ctx context.Context, userID string, refreshToken string
 
 	return s.repo.DeleteRefreshToken(ctx, uid, refreshToken)
 }
+
+func (s *Service) ValidateAndGetUser(ctx context.Context, userID string) (*user.UserResponse, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID")
+	}
+
+	u, err := s.userRepo.FindByID(ctx, uid)
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Обновляем last seen
+	s.userRepo.UpdateLastSeen(ctx, uid)
+
+	return &user.UserResponse{
+		ID:        u.ID,
+		Username:  u.Username,
+		Email:     u.Email,
+		AvatarURL: u.AvatarURL,
+		Status:    u.Status,
+		CreatedAt: u.CreatedAt,
+	}, nil
+}
