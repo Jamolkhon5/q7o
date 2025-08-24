@@ -11,6 +11,7 @@ import (
 	"q7o/internal/call"
 	"q7o/internal/common/database"
 	"q7o/internal/email"
+	"q7o/internal/meeting" // НОВЫЙ ИМПОРТ
 	"q7o/internal/user"
 	"q7o/pkg/logger"
 	"syscall"
@@ -36,7 +37,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Запускаем миграции программно
+	// Run migrations
 	log.Info("Running database migrations...")
 	if err := database.RunMigrations(db); err != nil {
 		log.Fatal("Failed to run migrations: ", err)
@@ -57,11 +58,16 @@ func main() {
 	userRepo := user.NewRepository(db)
 	authRepo := auth.NewRepository(db, redis)
 	callRepo := call.NewRepository(db)
+	meetingRepo := meeting.NewRepository(db) // НОВЫЙ РЕПОЗИТОРИЙ
 
 	// Initialize services
 	userService := user.NewService(userRepo, emailService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
 	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis)
+	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis) // НОВЫЙ СЕРВИС
+
+	// Start cleanup goroutine for expired meetings
+	go meetingService.CleanupExpiredMeetings(context.Background())
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
@@ -113,7 +119,7 @@ func main() {
 	userGroup.Get("/search", userHandler.SearchUsers)
 	userGroup.Get("/:id", userHandler.GetUser)
 
-	// Call routes
+	// Call routes (оставляем для 1-на-1 звонков)
 	callHandler := call.NewHandler(callService)
 	callGroup := api.Group("/calls", auth.RequireAuth(cfg.JWT))
 	callGroup.Post("/token", callHandler.GetCallToken)
@@ -122,6 +128,24 @@ func main() {
 	callGroup.Post("/reject", callHandler.RejectCall)
 	callGroup.Post("/end", callHandler.EndCall)
 	callGroup.Get("/history", callHandler.GetCallHistory)
+
+	// Meeting routes (НОВЫЕ РОУТЫ)
+	meetingHandler := meeting.NewHandler(meetingService)
+	meetingGroup := api.Group("/meetings")
+
+	// Public endpoints (для гостей)
+	meetingGroup.Post("/validate", meetingHandler.ValidateMeetingCode)
+	meetingGroup.Post("/join", meetingHandler.JoinMeeting)
+
+	// Authenticated endpoints
+	meetingAuthGroup := meetingGroup.Group("", auth.RequireAuth(cfg.JWT))
+	meetingAuthGroup.Post("/create", meetingHandler.CreateMeeting)
+	meetingAuthGroup.Post("/join-auth", meetingHandler.JoinMeetingAuth)
+	meetingAuthGroup.Post("/:id/leave", meetingHandler.LeaveMeeting)
+	meetingAuthGroup.Post("/:id/end", meetingHandler.EndMeeting)
+	meetingAuthGroup.Get("/:id/participants", meetingHandler.GetMeetingParticipants)
+	meetingAuthGroup.Put("/:id/participant-status", meetingHandler.UpdateParticipantStatus)
+	meetingAuthGroup.Get("/history", meetingHandler.GetUserMeetings)
 
 	// WebSocket for call signaling
 	app.Get("/ws/call", websocket.New(callHandler.HandleWebSocket))
