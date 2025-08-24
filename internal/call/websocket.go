@@ -12,12 +12,15 @@ import (
 )
 
 type CallSignal struct {
-	Type     string          `json:"type"` // offer, answer, ice-candidate, ring, hangup
-	FromID   uuid.UUID       `json:"from_id"`
-	ToID     uuid.UUID       `json:"to_id"`
-	RoomName string          `json:"room_name"`
-	CallType string          `json:"call_type"` // audio, video
-	Data     json.RawMessage `json:"data"`
+	Type       string          `json:"type"` // offer, answer, ice-candidate, ring, hangup, answered, rejected, ended, missed
+	FromID     uuid.UUID       `json:"from_id"`
+	ToID       uuid.UUID       `json:"to_id"`
+	RoomName   string          `json:"room_name"`
+	CallType   string          `json:"call_type"`   // audio, video
+	CallID     string          `json:"call_id"`     // ДОБАВЛЕНО
+	CallerName string          `json:"caller_name"` // ДОБАВЛЕНО
+	CalleeName string          `json:"callee_name"` // ДОБАВЛЕНО
+	Data       json.RawMessage `json:"data"`
 }
 
 type WSHub struct {

@@ -11,7 +11,7 @@ import (
 	"q7o/internal/call"
 	"q7o/internal/common/database"
 	"q7o/internal/email"
-	"q7o/internal/meeting" // НОВЫЙ ИМПОРТ
+	"q7o/internal/meeting"
 	"q7o/internal/user"
 	"q7o/pkg/logger"
 	"syscall"
@@ -51,6 +51,11 @@ func main() {
 	}
 	defer redis.Close()
 
+	// Initialize WebSocket Hub для звонков
+	wsHub := call.NewWSHub(redis)
+	go wsHub.Run()
+	log.Info("WebSocket Hub started")
+
 	// Initialize services
 	emailService := email.NewService(cfg.SMTP)
 
@@ -58,13 +63,13 @@ func main() {
 	userRepo := user.NewRepository(db)
 	authRepo := auth.NewRepository(db, redis)
 	callRepo := call.NewRepository(db)
-	meetingRepo := meeting.NewRepository(db) // НОВЫЙ РЕПОЗИТОРИЙ
+	meetingRepo := meeting.NewRepository(db)
 
-	// Initialize services
+	// Initialize services (передаем wsHub в callService)
 	userService := user.NewService(userRepo, emailService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
-	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis)
-	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis) // НОВЫЙ СЕРВИС
+	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis, wsHub) // ДОБАВЛЕН wsHub
+	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
 
 	// Start cleanup goroutine for expired meetings
 	go meetingService.CleanupExpiredMeetings(context.Background())
@@ -120,8 +125,8 @@ func main() {
 	userGroup.Get("/search", userHandler.SearchUsers)
 	userGroup.Get("/:id", userHandler.GetUser)
 
-	// Call routes (оставляем для 1-на-1 звонков)
-	callHandler := call.NewHandler(callService)
+	// Call routes (передаем wsHub в handler)
+	callHandler := call.NewHandler(callService, wsHub)
 	callGroup := api.Group("/calls", auth.RequireAuth(cfg.JWT))
 	callGroup.Post("/token", callHandler.GetCallToken)
 	callGroup.Post("/initiate", callHandler.InitiateCall)
@@ -130,11 +135,11 @@ func main() {
 	callGroup.Post("/end", callHandler.EndCall)
 	callGroup.Get("/history", callHandler.GetCallHistory)
 
-	// Meeting routes (НОВЫЕ РОУТЫ)
+	// Meeting routes
 	meetingHandler := meeting.NewHandler(meetingService)
 	meetingGroup := api.Group("/meetings")
 
-	// Public endpoints (для гостей)
+	// Public endpoints
 	meetingGroup.Post("/validate", meetingHandler.ValidateMeetingCode)
 	meetingGroup.Post("/join", meetingHandler.JoinMeeting)
 
@@ -148,8 +153,10 @@ func main() {
 	meetingAuthGroup.Put("/:id/participant-status", meetingHandler.UpdateParticipantStatus)
 	meetingAuthGroup.Get("/history", meetingHandler.GetUserMeetings)
 
-	// WebSocket for call signaling
-	app.Get("/ws/call", websocket.New(callHandler.HandleWebSocket))
+	// WebSocket for call signaling (обновлено для работы с wsHub)
+	app.Get("/ws/call", websocket.New(func(c *websocket.Conn) {
+		callHandler.HandleWebSocket(c, wsHub)
+	}))
 
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {

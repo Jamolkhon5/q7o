@@ -18,20 +18,22 @@ type Service struct {
 	livekit  *LiveKitService
 	redis    *redis.Client
 	cfg      config.LiveKitConfig
+	wsHub    *WSHub // Добавлено для WebSocket
 }
 
-func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client) *Service {
+func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client, wsHub *WSHub) *Service {
 	return &Service{
 		repo:     repo,
 		userRepo: userRepo,
 		livekit:  NewLiveKitService(cfg),
 		redis:    redis,
 		cfg:      cfg,
+		wsHub:    wsHub, // Инициализация WSHub
 	}
 }
 
 func (s *Service) GetLiveKitURL() string {
-	// ИЗМЕНЕНО: Сначала проверяем PublicHost для внешних клиентов
+	// Сначала проверяем PublicHost для внешних клиентов
 	if s.cfg.PublicHost != "" {
 		return s.cfg.PublicHost
 	}
@@ -96,6 +98,10 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 	// Обновляем статус caller
 	s.userRepo.UpdateStatus(ctx, callerID, "calling")
 
+	// Обновляем статус звонка на "ringing" после отправки уведомления
+	call.Status = "ringing"
+	s.repo.UpdateStatus(ctx, call.ID, "ringing", nil, nil)
+
 	return call, nil
 }
 
@@ -124,6 +130,9 @@ func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Ca
 	// Обновляем статусы пользователей
 	s.userRepo.UpdateStatus(ctx, call.CallerID, "busy")
 	s.userRepo.UpdateStatus(ctx, call.CalleeID, "busy")
+
+	// Обновляем кеш
+	s.storeCallInCache(ctx, call)
 
 	return call, nil
 }
@@ -197,6 +206,17 @@ func (s *Service) EndCall(ctx context.Context, callID, userID uuid.UUID) (*Call,
 	return call, nil
 }
 
+// GetCall - новый метод для получения информации о звонке
+func (s *Service) GetCall(ctx context.Context, callID uuid.UUID) (*Call, error) {
+	// Сначала проверяем кеш
+	if call := s.getCallFromCache(ctx, callID); call != nil {
+		return call, nil
+	}
+
+	// Если нет в кеше, получаем из БД
+	return s.repo.FindByID(ctx, callID)
+}
+
 func (s *Service) GetCallHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Call, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -222,6 +242,17 @@ func (s *Service) handleCallTimeout(callID uuid.UUID, timeout time.Duration) {
 		s.userRepo.UpdateStatus(ctx, call.CallerID, "online")
 		s.userRepo.UpdateStatus(ctx, call.CalleeID, "online")
 
+		// Отправляем сигнал о пропущенном звонке
+		if s.wsHub != nil {
+			signal := &CallSignal{
+				Type:   "missed",
+				FromID: call.CalleeID,
+				ToID:   call.CallerID,
+				CallID: call.ID.String(),
+			}
+			s.wsHub.broadcast <- signal
+		}
+
 		// Очищаем кеш
 		s.clearCallFromCache(ctx, callID)
 	}
@@ -233,6 +264,8 @@ func (s *Service) storeCallInCache(ctx context.Context, call *Call) {
 		"room_name", call.RoomName,
 		"caller_id", call.CallerID.String(),
 		"callee_id", call.CalleeID.String(),
+		"caller_name", call.CallerName,
+		"callee_name", call.CalleeName,
 		"call_type", call.CallType,
 		"status", call.Status,
 	)
@@ -255,11 +288,13 @@ func (s *Service) getCallFromCache(ctx context.Context, callID uuid.UUID) *Call 
 	calleeID, _ := uuid.Parse(data["callee_id"])
 
 	return &Call{
-		ID:       callID,
-		RoomName: data["room_name"],
-		CallerID: callerID,
-		CalleeID: calleeID,
-		CallType: data["call_type"],
-		Status:   data["status"],
+		ID:         callID,
+		RoomName:   data["room_name"],
+		CallerID:   callerID,
+		CalleeID:   calleeID,
+		CallerName: data["caller_name"],
+		CalleeName: data["callee_name"],
+		CallType:   data["call_type"],
+		Status:     data["status"],
 	}
 }
