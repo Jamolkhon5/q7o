@@ -33,7 +33,6 @@ func (h *Handler) GetCallToken(c *fiber.Ctx) error {
 
 	uid, _ := uuid.Parse(userID)
 
-	// Просто генерируем токен для подключения к комнате
 	token, err := h.service.GenerateCallToken(req.RoomName, uid, username)
 	if err != nil {
 		return response.InternalError(c, err)
@@ -53,7 +52,6 @@ func (h *Handler) GetCallToken(c *fiber.Ctx) error {
 // InitiateCall создает новый звонок и отправляет WebSocket сигнал
 func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
-	username := c.Locals("username").(string)
 
 	var req InitiateCallRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -63,14 +61,8 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 	callerID, _ := uuid.Parse(userID)
 	calleeID, _ := uuid.Parse(req.CalleeID)
 
-	// Создаем запись о звонке
-	call, err := h.service.InitiateCall(c.Context(), callerID, calleeID, req.CallType)
-	if err != nil {
-		return response.InternalError(c, err)
-	}
-
-	// Генерируем токен для caller
-	token, err := h.service.GenerateCallToken(call.RoomName, callerID, username)
+	// Создаем запись о звонке и получаем токен для caller
+	call, callerToken, err := h.service.InitiateCall(c.Context(), callerID, calleeID, req.CallType)
 	if err != nil {
 		return response.InternalError(c, err)
 	}
@@ -101,9 +93,10 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 
 	log.Printf("Sent ring signal from %s to %s for call %s", callerID, calleeID, call.ID)
 
+	// Возвращаем токен звонящему сразу
 	return response.Success(c, fiber.Map{
 		"call":      call,
-		"token":     token,
+		"token":     callerToken,
 		"room_name": call.RoomName,
 		"ws_url":    h.service.GetLiveKitURL(),
 	})
@@ -112,7 +105,6 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 // AnswerCall - отвечаем на звонок и уведомляем звонящего
 func (h *Handler) AnswerCall(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
-	username := c.Locals("username").(string)
 
 	var req AnswerCallRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -122,14 +114,8 @@ func (h *Handler) AnswerCall(c *fiber.Ctx) error {
 	uid, _ := uuid.Parse(userID)
 	callID, _ := uuid.Parse(req.CallID)
 
-	// Обновляем статус звонка
-	call, err := h.service.AnswerCall(c.Context(), callID, uid)
-	if err != nil {
-		return response.InternalError(c, err)
-	}
-
-	// Генерируем токен для callee
-	token, err := h.service.GenerateCallToken(call.RoomName, uid, username)
+	// Обновляем статус звонка и получаем токен для callee
+	call, calleeToken, err := h.service.AnswerCall(c.Context(), callID, uid)
 	if err != nil {
 		return response.InternalError(c, err)
 	}
@@ -147,9 +133,10 @@ func (h *Handler) AnswerCall(c *fiber.Ctx) error {
 
 	log.Printf("Call %s answered by %s", call.ID, uid)
 
+	// Возвращаем токен для получателя
 	return response.Success(c, fiber.Map{
 		"call":      call,
-		"token":     token,
+		"token":     calleeToken,
 		"room_name": call.RoomName,
 		"ws_url":    h.service.GetLiveKitURL(),
 	})

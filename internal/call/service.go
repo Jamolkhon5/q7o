@@ -18,7 +18,7 @@ type Service struct {
 	livekit  *LiveKitService
 	redis    *redis.Client
 	cfg      config.LiveKitConfig
-	wsHub    *WSHub // Добавлено для WebSocket
+	wsHub    *WSHub
 }
 
 func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client, wsHub *WSHub) *Service {
@@ -28,48 +28,46 @@ func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitC
 		livekit:  NewLiveKitService(cfg),
 		redis:    redis,
 		cfg:      cfg,
-		wsHub:    wsHub, // Инициализация WSHub
+		wsHub:    wsHub,
 	}
 }
 
 func (s *Service) GetLiveKitURL() string {
-	// Сначала проверяем PublicHost для внешних клиентов
 	if s.cfg.PublicHost != "" {
 		return s.cfg.PublicHost
 	}
-	// Затем возвращаем основной Host
 	if s.cfg.Host != "" {
 		return s.cfg.Host
 	}
-	return "ws://10.0.2.2:7880" // Для Android эмулятора
+	return "ws://10.0.2.2:7880"
 }
 
 func (s *Service) GenerateCallToken(roomName string, userID uuid.UUID, username string) (string, error) {
 	return s.livekit.GenerateToken(roomName, userID, username)
 }
 
-func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, error) {
+func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, error) {
 	// Проверяем существование пользователей
 	caller, err := s.userRepo.FindByID(ctx, callerID)
 	if err != nil {
-		return nil, errors.New("caller not found")
+		return nil, "", errors.New("caller not found")
 	}
 
 	callee, err := s.userRepo.FindByID(ctx, calleeID)
 	if err != nil {
-		return nil, errors.New("callee not found")
+		return nil, "", errors.New("callee not found")
 	}
 
 	// Проверяем доступность
 	if caller.Status == "busy" {
-		return nil, errors.New("caller is already in a call")
+		return nil, "", errors.New("caller is already in a call")
 	}
 
 	if callee.Status == "busy" {
-		return nil, errors.New("user is busy")
+		return nil, "", errors.New("user is busy")
 	}
 
-	// Генерируем уникальное имя комнаты
+	// Генерируем уникальное имя комнаты (как в meetings)
 	roomName := utils.GenerateRoomName()
 
 	// Создаем запись о звонке
@@ -86,8 +84,24 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 	}
 
 	if err := s.repo.Create(ctx, call); err != nil {
-		return nil, err
+		return nil, "", err
 	}
+
+	// Генерируем токен для звонящего СРАЗУ
+	callerToken, err := s.livekit.GenerateToken(roomName, callerID, caller.Username)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Генерируем токен для получателя и сохраняем в Redis для последующего использования
+	calleeToken, err := s.livekit.GenerateToken(roomName, calleeID, callee.Username)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Сохраняем токен получателя в Redis
+	tokenKey := "call:token:" + call.ID.String()
+	s.redis.Set(ctx, tokenKey, calleeToken, 5*time.Minute)
 
 	// Сохраняем информацию о звонке в Redis для быстрого доступа
 	s.storeCallInCache(ctx, call)
@@ -102,21 +116,33 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 	call.Status = "ringing"
 	s.repo.UpdateStatus(ctx, call.ID, "ringing", nil, nil)
 
-	return call, nil
+	return call, callerToken, nil
 }
 
-func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Call, error) {
+func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Call, string, error) {
 	call, err := s.repo.FindByID(ctx, callID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if call.CalleeID != userID {
-		return nil, errors.New("unauthorized")
+		return nil, "", errors.New("unauthorized")
 	}
 
 	if call.Status != "initiated" && call.Status != "ringing" {
-		return nil, errors.New("call already processed")
+		return nil, "", errors.New("call already processed")
+	}
+
+	// Получаем сохраненный токен из Redis
+	tokenKey := "call:token:" + callID.String()
+	token, err := s.redis.Get(ctx, tokenKey).Result()
+	if err != nil {
+		// Если токена нет в Redis, генерируем новый
+		callee, _ := s.userRepo.FindByID(ctx, userID)
+		token, err = s.livekit.GenerateToken(call.RoomName, userID, callee.Username)
+		if err != nil {
+			return nil, "", err
+		}
 	}
 
 	now := time.Now()
@@ -124,7 +150,7 @@ func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Ca
 	call.AnsweredAt = &now
 
 	if err := s.repo.UpdateStatus(ctx, callID, "answered", &now, nil); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Обновляем статусы пользователей
@@ -134,7 +160,10 @@ func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Ca
 	// Обновляем кеш
 	s.storeCallInCache(ctx, call)
 
-	return call, nil
+	// Удаляем токен из Redis после использования
+	s.redis.Del(ctx, tokenKey)
+
+	return call, token, nil
 }
 
 func (s *Service) RejectCall(ctx context.Context, callID, userID uuid.UUID) error {
@@ -159,6 +188,10 @@ func (s *Service) RejectCall(ctx context.Context, callID, userID uuid.UUID) erro
 	// Обновляем статусы пользователей
 	s.userRepo.UpdateStatus(ctx, call.CallerID, "online")
 	s.userRepo.UpdateStatus(ctx, call.CalleeID, "online")
+
+	// Очищаем токен из Redis
+	tokenKey := "call:token:" + callID.String()
+	s.redis.Del(ctx, tokenKey)
 
 	// Очищаем кеш
 	s.clearCallFromCache(ctx, callID)
@@ -200,20 +233,18 @@ func (s *Service) EndCall(ctx context.Context, callID, userID uuid.UUID) (*Call,
 	s.userRepo.UpdateStatus(ctx, call.CallerID, "online")
 	s.userRepo.UpdateStatus(ctx, call.CalleeID, "online")
 
-	// Очищаем кеш
+	// Очищаем кеш и токен
 	s.clearCallFromCache(ctx, call.ID)
+	tokenKey := "call:token:" + callID.String()
+	s.redis.Del(ctx, tokenKey)
 
 	return call, nil
 }
 
-// GetCall - новый метод для получения информации о звонке
 func (s *Service) GetCall(ctx context.Context, callID uuid.UUID) (*Call, error) {
-	// Сначала проверяем кеш
 	if call := s.getCallFromCache(ctx, callID); call != nil {
 		return call, nil
 	}
-
-	// Если нет в кеше, получаем из БД
 	return s.repo.FindByID(ctx, callID)
 }
 
@@ -253,8 +284,10 @@ func (s *Service) handleCallTimeout(callID uuid.UUID, timeout time.Duration) {
 			s.wsHub.broadcast <- signal
 		}
 
-		// Очищаем кеш
+		// Очищаем кеш и токен
 		s.clearCallFromCache(ctx, callID)
+		tokenKey := "call:token:" + callID.String()
+		s.redis.Del(ctx, tokenKey)
 	}
 }
 
