@@ -1,6 +1,7 @@
 package call
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/livekit/protocol/auth"
 	"q7o/config"
@@ -17,7 +18,8 @@ func NewLiveKitService(cfg config.LiveKitConfig) *LiveKitService {
 	}
 }
 
-func (s *LiveKitService) GenerateToken(roomName string, userID uuid.UUID, username string) (string, error) {
+// GenerateToken теперь принимает роль участника для создания уникального identity
+func (s *LiveKitService) GenerateToken(roomName string, userID uuid.UUID, username string, participantRole string) (string, error) {
 	at := auth.NewAccessToken(s.cfg.APIKey, s.cfg.APISecret)
 
 	canPublish := true
@@ -32,8 +34,12 @@ func (s *LiveKitService) GenerateToken(roomName string, userID uuid.UUID, userna
 		CanPublishData: &canPublishData,
 	}
 
+	// Создаем уникальный identity для каждого участника
+	// Формат: userID::role::roomName - это гарантирует уникальность
+	identity := fmt.Sprintf("%s::%s::%s", userID.String(), participantRole, roomName)
+
 	at.SetVideoGrant(grant).
-		SetIdentity(userID.String()).
+		SetIdentity(identity).
 		SetName(username).
 		SetValidFor(24 * time.Hour)
 
