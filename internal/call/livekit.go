@@ -1,7 +1,6 @@
 package call
 
 import (
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/livekit/protocol/auth"
 	"q7o/config"
@@ -18,7 +17,7 @@ func NewLiveKitService(cfg config.LiveKitConfig) *LiveKitService {
 	}
 }
 
-// GenerateToken теперь принимает роль участника для создания уникального identity
+// GenerateToken генерирует токен для участника звонка
 func (s *LiveKitService) GenerateToken(roomName string, userID uuid.UUID, username string, participantRole string) (string, error) {
 	at := auth.NewAccessToken(s.cfg.APIKey, s.cfg.APISecret)
 
@@ -34,13 +33,14 @@ func (s *LiveKitService) GenerateToken(roomName string, userID uuid.UUID, userna
 		CanPublishData: &canPublishData,
 	}
 
-	// Создаем уникальный identity для каждого участника
-	// Формат: userID::role::roomName - это гарантирует уникальность
-	identity := fmt.Sprintf("%s::%s::%s", userID.String(), participantRole, roomName)
+	// ИСПРАВЛЕНИЕ: Используем простой identity как в meetings - только userID
+	// Роль сохраняем в metadata
+	identity := userID.String()
 
 	at.SetVideoGrant(grant).
 		SetIdentity(identity).
 		SetName(username).
+		SetMetadata(participantRole). // Сохраняем роль в metadata
 		SetValidFor(24 * time.Hour)
 
 	return at.ToJWT()
