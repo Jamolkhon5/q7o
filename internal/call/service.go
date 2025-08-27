@@ -43,7 +43,8 @@ func (s *Service) GetLiveKitURL() string {
 }
 
 func (s *Service) GenerateCallToken(roomName string, userID uuid.UUID, username string) (string, error) {
-	return s.livekit.GenerateToken(roomName, userID, username)
+	// Для обычной генерации токена используем роль "participant"
+	return s.livekit.GenerateToken(roomName, userID, username, "participant")
 }
 
 func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, error) {
@@ -67,7 +68,7 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 		return nil, "", errors.New("user is busy")
 	}
 
-	// Генерируем уникальное имя комнаты (как в meetings)
+	// Генерируем уникальное имя комнаты
 	roomName := utils.GenerateRoomName()
 
 	// Создаем запись о звонке
@@ -87,14 +88,14 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 		return nil, "", err
 	}
 
-	// Генерируем токен для звонящего СРАЗУ
-	callerToken, err := s.livekit.GenerateToken(roomName, callerID, caller.Username)
+	// Генерируем токен для звонящего с ролью "caller"
+	callerToken, err := s.livekit.GenerateToken(roomName, callerID, caller.Username, "caller")
 	if err != nil {
 		return nil, "", err
 	}
 
-	// Генерируем токен для получателя и сохраняем в Redis для последующего использования
-	calleeToken, err := s.livekit.GenerateToken(roomName, calleeID, callee.Username)
+	// Генерируем токен для получателя с ролью "callee" и сохраняем в Redis
+	calleeToken, err := s.livekit.GenerateToken(roomName, calleeID, callee.Username, "callee")
 	if err != nil {
 		return nil, "", err
 	}
@@ -137,9 +138,9 @@ func (s *Service) AnswerCall(ctx context.Context, callID, userID uuid.UUID) (*Ca
 	tokenKey := "call:token:" + callID.String()
 	token, err := s.redis.Get(ctx, tokenKey).Result()
 	if err != nil {
-		// Если токена нет в Redis, генерируем новый
+		// Если токена нет в Redis, генерируем новый с ролью "callee"
 		callee, _ := s.userRepo.FindByID(ctx, userID)
-		token, err = s.livekit.GenerateToken(call.RoomName, userID, callee.Username)
+		token, err = s.livekit.GenerateToken(call.RoomName, userID, callee.Username, "callee")
 		if err != nil {
 			return nil, "", err
 		}
