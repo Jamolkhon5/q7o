@@ -7,7 +7,7 @@ import (
 
 type User struct {
 	ID                       uuid.UUID  `json:"id"`
-	Username                 string     `json:"username.go"`
+	Username                 string     `json:"username"` // ✅ ИСПРАВЛЕНО
 	FirstName                string     `json:"first_name"`
 	LastName                 string     `json:"last_name"`
 	Email                    string     `json:"email"`
@@ -25,13 +25,13 @@ type User struct {
 type CreateUserDTO struct {
 	FirstName string `json:"first_name" validate:"required,min=2,max=100"`
 	LastName  string `json:"last_name" validate:"required,min=2,max=100"`
-	Username  string `json:"username.go" validate:"omitempty,min=3,max=50"`
+	Username  string `json:"username" validate:"omitempty,min=3,max=50"` // ✅ ИСПРАВЛЕНО
 	Email     string `json:"email" validate:"required,email"`
 	Password  string `json:"password" validate:"required,min=6"`
 }
 
 type UpdateUserDTO struct {
-	Username  *string `json:"username.go" validate:"omitempty,min=3,max=50"`
+	Username  *string `json:"username" validate:"omitempty,min=3,max=50"` // ✅ ИСПРАВЛЕНО
 	FirstName *string `json:"first_name" validate:"omitempty,min=2,max=100"`
 	LastName  *string `json:"last_name" validate:"omitempty,min=2,max=100"`
 	AvatarURL *string `json:"avatar_url"`
@@ -40,7 +40,7 @@ type UpdateUserDTO struct {
 
 type UserResponse struct {
 	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username.go"`
+	Username  string    `json:"username"` // ✅ ИСПРАВЛЕНО
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
 	Email     string    `json:"email"`
@@ -52,6 +52,6 @@ type UserResponse struct {
 
 type CheckUsernameResponse struct {
 	Available   bool     `json:"available"`
-	Username    string   `json:"username.go"`
+	Username    string   `json:"username"` // ✅ ИСПРАВЛЕНО
 	Suggestions []string `json:"suggestions,omitempty"`
 }

@@ -24,7 +24,7 @@ func NewHandler(service *Service, wsHub *WSHub) *Handler {
 // GetCallToken генерирует токен для подключения к комнате LiveKit
 func (h *Handler) GetCallToken(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
-	username := c.Locals("username.go").(string)
+	username := c.Locals("username").(string)
 
 	var req TokenRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -43,8 +43,8 @@ func (h *Handler) GetCallToken(c *fiber.Ctx) error {
 		"room_name": req.RoomName,
 		"ws_url":    h.service.GetLiveKitURL(),
 		"user": fiber.Map{
-			"id":          userID,
-			"username.go": username,
+			"id":       userID,
+			"username": username,
 		},
 	})
 }

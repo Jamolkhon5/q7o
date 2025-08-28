@@ -74,7 +74,7 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 
 	user, err := h.service.UpdateProfile(c.Context(), uid, &req)
 	if err != nil {
-		if err.Error() == "username.go already taken" {
+		if err.Error() == "username already taken" {
 			return response.Conflict(c, err.Error())
 		}
 		return response.InternalError(c, err)

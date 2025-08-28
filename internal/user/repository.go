@@ -20,7 +20,7 @@ func NewRepository(db *sql.DB) *Repository {
 func (r *Repository) Create(ctx context.Context, user *User) error {
 	query := `
         INSERT INTO users (
-            id, username.go, first_name, last_name, email, password_hash, 
+            id, username, first_name, last_name, email, password_hash, 
             email_verification_code, email_verification_expires,
             status, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -46,7 +46,7 @@ func (r *Repository) Create(ctx context.Context, user *User) error {
 
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	query := `
-        SELECT id, username.go, first_name, last_name, email, password_hash, 
+        SELECT id, username, first_name, last_name, email, password_hash, 
                email_verified, email_verification_code, email_verification_expires,
                avatar_url, status, last_seen, created_at, updated_at
         FROM users WHERE id = $1
@@ -70,7 +70,7 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-        SELECT id, username.go, first_name, last_name, email, password_hash, 
+        SELECT id, username, first_name, last_name, email, password_hash, 
                email_verified, email_verification_code, email_verification_expires,
                avatar_url, status, last_seen, created_at, updated_at
         FROM users WHERE email = $1
@@ -94,9 +94,9 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 
 func (r *Repository) FindByUsername(ctx context.Context, username string) (*User, error) {
 	query := `
-        SELECT id, username.go, first_name, last_name, email, avatar_url, 
+        SELECT id, username, first_name, last_name, email, avatar_url, 
                status, last_seen, created_at
-        FROM users WHERE username.go = $1
+        FROM users WHERE username = $1
     `
 
 	user := &User{}
@@ -117,7 +117,7 @@ func (r *Repository) EmailExists(ctx context.Context, email string) (bool, error
 }
 
 func (r *Repository) UsernameExists(ctx context.Context, username string) (bool, error) {
-	query := `SELECT COUNT(*) FROM users WHERE username.go = $1`
+	query := `SELECT COUNT(*) FROM users WHERE username = $1`
 	var count int
 	err := r.db.QueryRowContext(ctx, query, username).Scan(&count)
 	return count > 0, err
@@ -125,9 +125,9 @@ func (r *Repository) UsernameExists(ctx context.Context, username string) (bool,
 
 func (r *Repository) FindSimilarUsernames(ctx context.Context, baseUsername string, limit int) ([]string, error) {
 	query := `
-        SELECT username.go FROM users 
-        WHERE username.go LIKE $1 || '%'
-        ORDER BY username.go
+        SELECT username FROM users 
+        WHERE username LIKE $1 || '%'
+        ORDER BY username
         LIMIT $2
     `
 
@@ -152,7 +152,7 @@ func (r *Repository) FindSimilarUsernames(ctx context.Context, baseUsername stri
 func (r *Repository) Update(ctx context.Context, id uuid.UUID, updates *UpdateUserDTO) error {
 	query := `
         UPDATE users 
-        SET username.go = COALESCE($2, username.go),
+        SET username = COALESCE($2, username),
             first_name = COALESCE($3, first_name),
             last_name = COALESCE($4, last_name),
             avatar_url = COALESCE($5, avatar_url),
@@ -206,13 +206,13 @@ func (r *Repository) UpdateVerificationCode(ctx context.Context, id uuid.UUID, c
 
 func (r *Repository) Search(ctx context.Context, query string, limit, offset int) ([]*User, error) {
 	sqlQuery := `
-        SELECT id, username.go, first_name, last_name, email, avatar_url, 
+        SELECT id, username, first_name, last_name, email, avatar_url, 
                status, last_seen, created_at
         FROM users 
-        WHERE username.go ILIKE $1 OR email ILIKE $1 
+        WHERE username ILIKE $1 OR email ILIKE $1 
               OR first_name ILIKE $1 OR last_name ILIKE $1
               OR CONCAT(first_name, ' ', last_name) ILIKE $1
-        ORDER BY username.go
+        ORDER BY username
         LIMIT $2 OFFSET $3
     `
 
