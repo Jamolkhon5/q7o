@@ -65,7 +65,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, updates *
 		if exists {
 			user, _ := s.repo.FindByID(ctx, userID)
 			if user.Username != *updates.Username {
-				return nil, errors.New("username.go already taken")
+				return nil, errors.New("username already taken")
 			}
 		}
 	}

@@ -216,7 +216,7 @@ func (h *Handler) SuggestUsernames(c *fiber.Ctx) error {
 type RegisterRequest struct {
 	FirstName string `json:"first_name" validate:"required,min=2,max=100"`
 	LastName  string `json:"last_name" validate:"required,min=2,max=100"`
-	Username  string `json:"username.go" validate:"omitempty,min=3,max=50"` // опциональный
+	Username  string `json:"username" validate:"omitempty,min=3,max=50"` // Исправлено с "username.go" на "username"
 	Email     string `json:"email" validate:"required,email"`
 	Password  string `json:"password" validate:"required,min=6"`
 }

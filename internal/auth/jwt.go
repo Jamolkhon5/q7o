@@ -12,7 +12,7 @@ import (
 
 type TokenClaims struct {
 	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username.go"`
+	Username string    `json:"username"`
 	jwt.RegisteredClaims
 }
 
