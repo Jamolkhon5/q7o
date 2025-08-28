@@ -68,10 +68,11 @@ func (s *Service) SendContactRequest(ctx context.Context, senderID uuid.UUID, dt
 	sender, _ := s.userRepo.FindByID(ctx, senderID)
 	if s.wsHub != nil {
 		notificationData, _ := json.Marshal(map[string]interface{}{
-			"request_id":  request.ID.String(),
-			"sender_id":   senderID.String(),
-			"sender_name": sender.Username,
-			"message":     dto.Message,
+			"request_id":    request.ID.String(),
+			"sender_id":     senderID.String(),
+			"sender_name":   sender.Username,
+			"receiver_name": receiver.Username, // ИСПОЛЬЗУЕМ receiver
+			"message":       dto.Message,
 		})
 
 		signal := &call.CallSignal{

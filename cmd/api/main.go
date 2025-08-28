@@ -57,7 +57,7 @@ func main() {
 	go wsHub.Run()
 	log.Info("WebSocket Hub started")
 
-	// Initialize services
+	// Initialize email service
 	emailService := email.NewService(cfg.SMTP)
 
 	// Initialize repositories
@@ -67,12 +67,18 @@ func main() {
 	meetingRepo := meeting.NewRepository(db)
 	contactRepo := contact.NewRepository(db)
 
-	// Initialize services (передаем wsHub в callService)
+	// Initialize services
 	userService := user.NewService(userRepo, emailService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
-	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis, wsHub) // ДОБАВЛЕН wsHub
 	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
+
+	// Contact service без зависимости от call service
 	contactService := contact.NewService(contactRepo, userRepo, wsHub)
+
+	// Call service с contact service
+	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis, wsHub)
+	// Устанавливаем contactService в callService после создания
+	callService.SetContactService(contactService)
 
 	// Start cleanup goroutine for expired meetings
 	go meetingService.CleanupExpiredMeetings(context.Background())
@@ -122,15 +128,16 @@ func main() {
 	authGroup.Get("/check-username", authHandler.CheckUsername)
 	authGroup.Post("/check-username", authHandler.CheckUsername)
 	authGroup.Post("/suggest-usernames", authHandler.SuggestUsernames)
-	// User routes
-	userHandler := user.NewHandler(userService)
+
+	// User routes - ПЕРЕДАЕМ contactService
+	userHandler := user.NewHandler(userService, contactService)
 	userGroup := api.Group("/users", auth.RequireAuth(cfg.JWT))
 	userGroup.Get("/me", userHandler.GetMe)
 	userGroup.Put("/me", userHandler.UpdateProfile)
 	userGroup.Get("/search", userHandler.SearchUsers)
 	userGroup.Get("/:id", userHandler.GetUser)
 
-	// Call routes (передаем wsHub в handler)
+	// Call routes
 	callHandler := call.NewHandler(callService, wsHub)
 	callGroup := api.Group("/calls", auth.RequireAuth(cfg.JWT))
 	callGroup.Post("/token", callHandler.GetCallToken)
@@ -158,18 +165,22 @@ func main() {
 	meetingAuthGroup.Put("/:id/participant-status", meetingHandler.UpdateParticipantStatus)
 	meetingAuthGroup.Get("/history", meetingHandler.GetUserMeetings)
 
-	// Contact routes
+	// Contact routes - ВСЕ ЭНДПОИНТЫ КОТОРЫЕ НУЖНЫ ФРОНТЕНДУ
 	contactHandler := contact.NewHandler(contactService)
 	contactGroup := api.Group("/contacts", auth.RequireAuth(cfg.JWT))
+
+	// Эти эндпоинты нужны фронтенду для ContactsScreen
+	contactGroup.Get("/", contactHandler.GetContacts)                // GET /api/v1/contacts
+	contactGroup.Get("/requests", contactHandler.GetContactRequests) // GET /api/v1/contacts/requests
+
+	// Остальные эндпоинты
 	contactGroup.Post("/request", contactHandler.SendContactRequest)
-	contactGroup.Get("/requests", contactHandler.GetContactRequests)
 	contactGroup.Post("/accept/:request_id", contactHandler.AcceptContactRequest)
 	contactGroup.Post("/reject/:request_id", contactHandler.RejectContactRequest)
-	contactGroup.Get("/", contactHandler.GetContacts)
 	contactGroup.Delete("/:contact_id", contactHandler.RemoveContact)
 	contactGroup.Get("/check/:user_id", contactHandler.CheckContact)
 
-	// WebSocket for call signaling (обновлено для работы с wsHub)
+	// WebSocket for call signaling
 	app.Get("/ws/call", websocket.New(func(c *websocket.Conn) {
 		callHandler.HandleWebSocket(c, wsHub)
 	}))
