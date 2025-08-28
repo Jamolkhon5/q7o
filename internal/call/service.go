@@ -12,23 +12,31 @@ import (
 	"q7o/internal/user"
 )
 
-type Service struct {
-	repo     *Repository
-	userRepo *user.Repository
-	livekit  *LiveKitService
-	redis    *redis.Client
-	cfg      config.LiveKitConfig
-	wsHub    *WSHub
+// ContactService interface to avoid circular dependency
+type ContactService interface {
+	IsContact(ctx context.Context, userID, contactID uuid.UUID) (bool, error)
+	UpdateLastCallTime(ctx context.Context, userID, contactID uuid.UUID) error
 }
 
-func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client, wsHub *WSHub) *Service {
+type Service struct {
+	repo           *Repository
+	userRepo       *user.Repository
+	livekit        *LiveKitService
+	redis          *redis.Client
+	cfg            config.LiveKitConfig
+	wsHub          *WSHub
+	contactService ContactService
+}
+
+func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client, wsHub *WSHub, contactService ContactService) *Service {
 	return &Service{
-		repo:     repo,
-		userRepo: userRepo,
-		livekit:  NewLiveKitService(cfg),
-		redis:    redis,
-		cfg:      cfg,
-		wsHub:    wsHub,
+		repo:           repo,
+		userRepo:       userRepo,
+		livekit:        NewLiveKitService(cfg),
+		redis:          redis,
+		cfg:            cfg,
+		wsHub:          wsHub,
+		contactService: contactService,
 	}
 }
 
@@ -48,6 +56,17 @@ func (s *Service) GenerateCallToken(roomName string, userID uuid.UUID, username 
 }
 
 func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, error) {
+	// Проверяем что пользователи являются контактами
+	if s.contactService != nil {
+		isContact, err := s.contactService.IsContact(ctx, callerID, calleeID)
+		if err != nil {
+			return nil, "", errors.New("failed to check contact status")
+		}
+		if !isContact {
+			return nil, "", errors.New("user is not in your contacts")
+		}
+	}
+
 	// Проверяем существование пользователей
 	caller, err := s.userRepo.FindByID(ctx, callerID)
 	if err != nil {
@@ -233,6 +252,11 @@ func (s *Service) EndCall(ctx context.Context, callID, userID uuid.UUID) (*Call,
 	// Обновляем статусы пользователей
 	s.userRepo.UpdateStatus(ctx, call.CallerID, "online")
 	s.userRepo.UpdateStatus(ctx, call.CalleeID, "online")
+
+	// Обновляем время последнего звонка в контактах
+	if s.contactService != nil && call.Duration > 0 {
+		s.contactService.UpdateLastCallTime(ctx, call.CallerID, call.CalleeID)
+	}
 
 	// Очищаем кеш и токен
 	s.clearCallFromCache(ctx, call.ID)

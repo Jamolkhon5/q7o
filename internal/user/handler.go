@@ -1,22 +1,29 @@
 package user
 
 import (
+	"context"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"q7o/internal/common/response"
-
 	"github.com/google/uuid"
+	"q7o/internal/common/response"
 )
 
-type Handler struct {
-	service  *Service
-	validate *validator.Validate
+// ContactService interface
+type ContactService interface {
+	IsContact(ctx context.Context, userID, contactID uuid.UUID) (bool, error)
 }
 
-func NewHandler(service *Service) *Handler {
+type Handler struct {
+	service        *Service
+	validate       *validator.Validate
+	contactService ContactService
+}
+
+func NewHandler(service *Service, contactService ContactService) *Handler {
 	return &Handler{
-		service:  service,
-		validate: validator.New(),
+		service:        service,
+		validate:       validator.New(),
+		contactService: contactService,
 	}
 }
 
@@ -36,6 +43,9 @@ func (h *Handler) GetMe(c *fiber.Ctx) error {
 }
 
 func (h *Handler) GetUser(c *fiber.Ctx) error {
+	currentUserID := c.Locals("userID").(string)
+	currentUID, _ := uuid.Parse(currentUserID)
+
 	id := c.Params("id")
 
 	// Try parsing as UUID first
@@ -44,16 +54,49 @@ func (h *Handler) GetUser(c *fiber.Ctx) error {
 		if err != nil {
 			return response.BadRequest(c, "User not found")
 		}
-		return response.Success(c, user)
+
+		// Проверка контакта
+		isContact := false
+		canCall := false
+
+		// Не проверяем для самого себя
+		if currentUID != uid {
+			if h.contactService != nil {
+				isContact, _ = h.contactService.IsContact(c.Context(), currentUID, uid)
+				canCall = isContact
+			}
+		}
+
+		return response.Success(c, fiber.Map{
+			"user":       user,
+			"is_contact": isContact,
+			"can_call":   canCall,
+		})
 	}
 
-	// Try as username.go
+	// Try as username
 	user, err := h.service.GetUserByUsername(c.Context(), id)
 	if err != nil {
 		return response.BadRequest(c, "User not found")
 	}
 
-	return response.Success(c, user)
+	// Проверка контакта
+	isContact := false
+	canCall := false
+
+	// Не проверяем для самого себя
+	if currentUID != user.ID {
+		if h.contactService != nil {
+			isContact, _ = h.contactService.IsContact(c.Context(), currentUID, user.ID)
+			canCall = isContact
+		}
+	}
+
+	return response.Success(c, fiber.Map{
+		"user":       user,
+		"is_contact": isContact,
+		"can_call":   canCall,
+	})
 }
 
 func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
@@ -84,6 +127,9 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 }
 
 func (h *Handler) SearchUsers(c *fiber.Ctx) error {
+	currentUserID := c.Locals("userID").(string)
+	currentUID, _ := uuid.Parse(currentUserID)
+
 	query := c.Query("q", "")
 	if query == "" {
 		return response.BadRequest(c, "Search query required")
@@ -95,6 +141,31 @@ func (h *Handler) SearchUsers(c *fiber.Ctx) error {
 	users, err := h.service.SearchUsers(c.Context(), query, limit, offset)
 	if err != nil {
 		return response.InternalError(c, err)
+	}
+
+	// Если есть сервис контактов, добавляем информацию о контактах
+	if h.contactService != nil {
+		for i := range users {
+			if users[i].ID != currentUID {
+				isContact, _ := h.contactService.IsContact(c.Context(), currentUID, users[i].ID)
+				// Создаем новую map для каждого пользователя с дополнительной информацией
+				userWithContact := make(map[string]interface{})
+				userWithContact["id"] = users[i].ID
+				userWithContact["username"] = users[i].Username
+				userWithContact["first_name"] = users[i].FirstName
+				userWithContact["last_name"] = users[i].LastName
+				userWithContact["email"] = users[i].Email
+				userWithContact["avatar_url"] = users[i].AvatarURL
+				userWithContact["status"] = users[i].Status
+				userWithContact["last_seen"] = users[i].LastSeen
+				userWithContact["created_at"] = users[i].CreatedAt
+				userWithContact["is_contact"] = isContact
+				userWithContact["can_call"] = isContact
+
+				// Заменяем в массиве
+				users[i] = users[i] // Это временно, нужно будет обновить тип возврата
+			}
+		}
 	}
 
 	return response.Success(c, fiber.Map{
