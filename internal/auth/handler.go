@@ -144,19 +144,40 @@ func (h *Handler) ValidateToken(c *fiber.Ctx) error {
 }
 
 func (h *Handler) CheckUsername(c *fiber.Ctx) error {
-	var req CheckUsernameRequest
+	// Для GET запроса
+	username := c.Query("username")
+	firstName := c.Query("first_name")
+	lastName := c.Query("last_name")
 
-	// Проверяем query параметры для GET запроса
-	username := c.Query("username.go")
 	if username != "" {
-		req.Username = username
-		req.FirstName = c.Query("first_name")
-		req.LastName = c.Query("last_name")
-	} else {
-		// Иначе парсим body для POST запроса
-		if err := c.BodyParser(&req); err != nil {
-			return response.BadRequest(c, "Invalid request")
+		// Проверяем что все параметры переданы
+		if firstName == "" || lastName == "" {
+			return response.BadRequest(c, "first_name and last_name are required")
 		}
+
+		// Валидация длины
+		if len(username) < 3 || len(username) > 50 {
+			return response.BadRequest(c, "Username must be 3-50 characters")
+		}
+		if len(firstName) < 2 || len(firstName) > 100 {
+			return response.BadRequest(c, "First name must be 2-100 characters")
+		}
+		if len(lastName) < 2 || len(lastName) > 100 {
+			return response.BadRequest(c, "Last name must be 2-100 characters")
+		}
+
+		result, err := h.service.CheckUsernameAvailability(c.Context(), username, firstName, lastName)
+		if err != nil {
+			return response.InternalError(c, err)
+		}
+
+		return response.Success(c, result)
+	}
+
+	// Для POST запроса
+	var req CheckUsernameRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
 	}
 
 	if err := h.validate.Struct(&req); err != nil {
@@ -223,9 +244,9 @@ type LogoutRequest struct {
 }
 
 type CheckUsernameRequest struct {
-	Username  string `json:"username.go" validate:"required,min=3,max=50"`
-	FirstName string `json:"first_name" validate:"omitempty,min=2,max=100"`
-	LastName  string `json:"last_name" validate:"omitempty,min=2,max=100"`
+	Username  string `json:"username" validate:"required,min=3,max=50"`
+	FirstName string `json:"first_name" validate:"required,min=2,max=100"`
+	LastName  string `json:"last_name" validate:"required,min=2,max=100"`
 }
 
 type SuggestUsernamesRequest struct {
