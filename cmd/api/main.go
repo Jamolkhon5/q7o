@@ -116,7 +116,9 @@ func main() {
 	authGroup.Post("/resend-verification", authHandler.ResendVerification)
 	authGroup.Post("/logout", auth.RequireAuth(cfg.JWT), authHandler.Logout)
 	authGroup.Post("/validate", auth.RequireAuth(cfg.JWT), authHandler.ValidateToken)
-
+	authGroup.Get("/check-username", authHandler.CheckUsername)
+	authGroup.Post("/check-username", authHandler.CheckUsername)
+	authGroup.Post("/suggest-usernames", authHandler.SuggestUsernames)
 	// User routes
 	userHandler := user.NewHandler(userService)
 	userGroup := api.Group("/users", auth.RequireAuth(cfg.JWT))

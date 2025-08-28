@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"q7o/config"
@@ -35,9 +36,46 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*user.User
 		return nil, nil, errors.New("email already exists")
 	}
 
-	// Check if username exists
-	if exists, _ := s.userRepo.UsernameExists(ctx, req.Username); exists {
-		return nil, nil, errors.New("username already exists")
+	// Определяем username.go
+	var finalUsername string
+
+	if req.Username != "" {
+		// Если пользователь предоставил username.go, проверяем его
+		req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+		if exists, _ := s.userRepo.UsernameExists(ctx, req.Username); exists {
+			return nil, nil, errors.New("username.go already exists")
+		}
+		finalUsername = req.Username
+	} else {
+		// Генерируем username.go автоматически
+		suggestions := utils.GenerateUsername(req.FirstName, req.LastName)
+
+		// Находим первый свободный вариант
+		for _, suggestion := range suggestions {
+			if exists, _ := s.userRepo.UsernameExists(ctx, suggestion); !exists {
+				finalUsername = suggestion
+				break
+			}
+		}
+
+		// Если все варианты заняты, генерируем с суффиксом
+		if finalUsername == "" {
+			if len(suggestions) > 0 {
+				// Получаем все похожие usernames для проверки
+				baseUsername := suggestions[0]
+				similarUsernames, _ := s.userRepo.FindSimilarUsernames(ctx, baseUsername, 100)
+				finalUsername = utils.GenerateUsernameWithSuffix(baseUsername, similarUsernames)
+			} else {
+				// Крайний случай - используем email prefix
+				emailPrefix := strings.Split(req.Email, "@")[0]
+				emailPrefix = utils.CleanString(emailPrefix)
+				if len(emailPrefix) > 20 {
+					emailPrefix = emailPrefix[:20]
+				}
+				similarUsernames, _ := s.userRepo.FindSimilarUsernames(ctx, emailPrefix, 100)
+				finalUsername = utils.GenerateUsernameWithSuffix(emailPrefix, similarUsernames)
+			}
+		}
 	}
 
 	// Hash password
@@ -53,7 +91,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*user.User
 	// Create user
 	newUser := &user.User{
 		ID:                       uuid.New(),
-		Username:                 req.Username,
+		Username:                 finalUsername,
+		FirstName:                req.FirstName,
+		LastName:                 req.LastName,
 		Email:                    req.Email,
 		PasswordHash:             hashedPassword,
 		EmailVerified:            false,
@@ -68,8 +108,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*user.User
 		return nil, nil, err
 	}
 
-	// Send verification email
-	go s.emailService.SendVerificationEmail(req.Email, req.Username, verificationCode)
+	// Send verification email with full name
+	fullName := req.FirstName + " " + req.LastName
+	go s.emailService.SendVerificationEmail(req.Email, fullName, verificationCode)
 
 	// Generate tokens
 	tokens, err := GenerateTokenPair(newUser.ID, newUser.Username, s.jwtConfig)
@@ -85,6 +126,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*user.User
 	userResponse := &user.UserResponse{
 		ID:        newUser.ID,
 		Username:  newUser.Username,
+		FirstName: newUser.FirstName,
+		LastName:  newUser.LastName,
 		Email:     newUser.Email,
 		Status:    newUser.Status,
 		CreatedAt: newUser.CreatedAt,
@@ -122,6 +165,8 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*user.UserRespon
 	userResponse := &user.UserResponse{
 		ID:        u.ID,
 		Username:  u.Username,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
 		Email:     u.Email,
 		Status:    u.Status,
 		CreatedAt: u.CreatedAt,
@@ -197,8 +242,9 @@ func (s *Service) ResendVerification(ctx context.Context, email string) error {
 		return err
 	}
 
-	// Send email
-	go s.emailService.SendVerificationEmail(email, u.Username, verificationCode)
+	// Send email with full name
+	fullName := u.FirstName + " " + u.LastName
+	go s.emailService.SendVerificationEmail(email, fullName, verificationCode)
 
 	return nil
 }
@@ -229,9 +275,83 @@ func (s *Service) ValidateAndGetUser(ctx context.Context, userID string) (*user.
 	return &user.UserResponse{
 		ID:        u.ID,
 		Username:  u.Username,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
 		Email:     u.Email,
 		AvatarURL: u.AvatarURL,
 		Status:    u.Status,
 		CreatedAt: u.CreatedAt,
 	}, nil
+}
+
+func (s *Service) CheckUsernameAvailability(ctx context.Context, username string, firstName string, lastName string) (*user.CheckUsernameResponse, error) {
+	// Приводим к нижнему регистру и очищаем
+	username = strings.ToLower(strings.TrimSpace(username))
+
+	// Проверяем доступность
+	exists, err := s.userRepo.UsernameExists(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &user.CheckUsernameResponse{
+		Available: !exists,
+		Username:  username,
+	}
+
+	// Если username.go занят, генерируем альтернативы
+	if exists && firstName != "" && lastName != "" {
+		alternatives := utils.GenerateAlternatives(username, firstName, lastName, 5)
+
+		// Проверяем доступность каждой альтернативы
+		availableAlternatives := []string{}
+		for _, alt := range alternatives {
+			if altExists, _ := s.userRepo.UsernameExists(ctx, alt); !altExists {
+				availableAlternatives = append(availableAlternatives, alt)
+			}
+		}
+
+		// Если все предложенные альтернативы заняты, генерируем с суффиксом
+		if len(availableAlternatives) == 0 {
+			similarUsernames, _ := s.userRepo.FindSimilarUsernames(ctx, username, 100)
+			newSuggestion := utils.GenerateUsernameWithSuffix(username, similarUsernames)
+			availableAlternatives = append(availableAlternatives, newSuggestion)
+		}
+
+		response.Suggestions = availableAlternatives
+	}
+
+	return response, nil
+}
+
+func (s *Service) GenerateUsernameSuggestions(ctx context.Context, firstName string, lastName string) ([]string, error) {
+	// Генерируем базовые варианты
+	variants := utils.GenerateUsername(firstName, lastName)
+
+	// Фильтруем только доступные
+	availableSuggestions := []string{}
+	for _, variant := range variants {
+		if exists, _ := s.userRepo.UsernameExists(ctx, variant); !exists {
+			availableSuggestions = append(availableSuggestions, variant)
+			if len(availableSuggestions) >= 5 {
+				break
+			}
+		}
+	}
+
+	// Если мало доступных, генерируем с суффиксами
+	if len(availableSuggestions) < 3 && len(variants) > 0 {
+		baseUsername := variants[0]
+		similarUsernames, _ := s.userRepo.FindSimilarUsernames(ctx, baseUsername, 100)
+
+		for i := 1; len(availableSuggestions) < 5 && i < 100; i++ {
+			candidate := utils.GenerateUsernameWithSuffix(baseUsername, similarUsernames)
+			if exists, _ := s.userRepo.UsernameExists(ctx, candidate); !exists {
+				availableSuggestions = append(availableSuggestions, candidate)
+				similarUsernames = append(similarUsernames, candidate)
+			}
+		}
+	}
+
+	return availableSuggestions, nil
 }

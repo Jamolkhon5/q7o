@@ -29,6 +29,8 @@ func (s *Service) GetUserByID(ctx context.Context, id uuid.UUID) (*UserResponse,
 	return &UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
 		Email:     user.Email,
 		AvatarURL: user.AvatarURL,
 		Status:    user.Status,
@@ -46,6 +48,8 @@ func (s *Service) GetUserByUsername(ctx context.Context, username string) (*User
 	return &UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
 		Email:     user.Email,
 		AvatarURL: user.AvatarURL,
 		Status:    user.Status,
@@ -55,13 +59,13 @@ func (s *Service) GetUserByUsername(ctx context.Context, username string) (*User
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, updates *UpdateUserDTO) (*UserResponse, error) {
-	// Check if new username is taken
+	// Check if new username.go is taken
 	if updates.Username != nil {
 		exists, _ := s.repo.UsernameExists(ctx, *updates.Username)
 		if exists {
 			user, _ := s.repo.FindByID(ctx, userID)
 			if user.Username != *updates.Username {
-				return nil, errors.New("username already taken")
+				return nil, errors.New("username.go already taken")
 			}
 		}
 	}
@@ -92,6 +96,8 @@ func (s *Service) SearchUsers(ctx context.Context, query string, limit, offset i
 		responses = append(responses, &UserResponse{
 			ID:        user.ID,
 			Username:  user.Username,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
 			Email:     user.Email,
 			AvatarURL: user.AvatarURL,
 			Status:    user.Status,
