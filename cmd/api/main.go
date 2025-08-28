@@ -10,6 +10,7 @@ import (
 	"q7o/internal/auth"
 	"q7o/internal/call"
 	"q7o/internal/common/database"
+	"q7o/internal/contact"
 	"q7o/internal/email"
 	"q7o/internal/meeting"
 	"q7o/internal/user"
@@ -64,12 +65,14 @@ func main() {
 	authRepo := auth.NewRepository(db, redis)
 	callRepo := call.NewRepository(db)
 	meetingRepo := meeting.NewRepository(db)
+	contactRepo := contact.NewRepository(db)
 
 	// Initialize services (передаем wsHub в callService)
 	userService := user.NewService(userRepo, emailService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
 	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis, wsHub) // ДОБАВЛЕН wsHub
 	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
+	contactService := contact.NewService(contactRepo, userRepo, wsHub)
 
 	// Start cleanup goroutine for expired meetings
 	go meetingService.CleanupExpiredMeetings(context.Background())
@@ -154,6 +157,17 @@ func main() {
 	meetingAuthGroup.Get("/:id/participants", meetingHandler.GetMeetingParticipants)
 	meetingAuthGroup.Put("/:id/participant-status", meetingHandler.UpdateParticipantStatus)
 	meetingAuthGroup.Get("/history", meetingHandler.GetUserMeetings)
+
+	// Contact routes
+	contactHandler := contact.NewHandler(contactService)
+	contactGroup := api.Group("/contacts", auth.RequireAuth(cfg.JWT))
+	contactGroup.Post("/request", contactHandler.SendContactRequest)
+	contactGroup.Get("/requests", contactHandler.GetContactRequests)
+	contactGroup.Post("/accept/:request_id", contactHandler.AcceptContactRequest)
+	contactGroup.Post("/reject/:request_id", contactHandler.RejectContactRequest)
+	contactGroup.Get("/", contactHandler.GetContacts)
+	contactGroup.Delete("/:contact_id", contactHandler.RemoveContact)
+	contactGroup.Get("/check/:user_id", contactHandler.CheckContact)
 
 	// WebSocket for call signaling (обновлено для работы с wsHub)
 	app.Get("/ws/call", websocket.New(func(c *websocket.Conn) {
