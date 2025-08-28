@@ -47,7 +47,7 @@ func (h *Handler) GetUser(c *fiber.Ctx) error {
 		return response.Success(c, user)
 	}
 
-	// Try as username
+	// Try as username.go
 	user, err := h.service.GetUserByUsername(c.Context(), id)
 	if err != nil {
 		return response.BadRequest(c, "User not found")
@@ -74,7 +74,7 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 
 	user, err := h.service.UpdateProfile(c.Context(), uid, &req)
 	if err != nil {
-		if err.Error() == "username already taken" {
+		if err.Error() == "username.go already taken" {
 			return response.Conflict(c, err.Error())
 		}
 		return response.InternalError(c, err)

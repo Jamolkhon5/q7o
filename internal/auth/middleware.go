@@ -30,7 +30,7 @@ func RequireAuth(cfg config.JWTConfig) fiber.Handler {
 		}
 
 		c.Locals("userID", claims.UserID.String())
-		c.Locals("username", claims.Username)
+		c.Locals("username.go", claims.Username)
 
 		return c.Next()
 	}

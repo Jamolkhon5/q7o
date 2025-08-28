@@ -43,7 +43,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*Meeting, err
 		SELECT m.id, m.meeting_code, m.room_name, m.host_id, m.title,
 			   m.description, m.meeting_type, m.scheduled_at, m.max_participants,
 			   m.is_active, m.requires_auth, m.allow_guests, m.created_at,
-			   m.ended_at, m.expires_at, u.username as host_name,
+			   m.ended_at, m.expires_at, u.username.go as host_name,
 			   (SELECT COUNT(*) FROM meeting_participants mp 
 			    WHERE mp.meeting_id = m.id AND mp.is_active = true) as participant_count
 		FROM meetings m
@@ -74,7 +74,7 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*Meeting, erro
 		SELECT m.id, m.meeting_code, m.room_name, m.host_id, m.title,
 			   m.description, m.meeting_type, m.scheduled_at, m.max_participants,
 			   m.is_active, m.requires_auth, m.allow_guests, m.created_at,
-			   m.ended_at, m.expires_at, u.username as host_name
+			   m.ended_at, m.expires_at, u.username.go as host_name
 		FROM meetings m
 		LEFT JOIN users u ON m.host_id = u.id
 		WHERE m.id = $1
@@ -175,7 +175,7 @@ func (r *Repository) RemoveParticipant(ctx context.Context, meetingID, userID uu
 func (r *Repository) GetMeetingParticipants(ctx context.Context, meetingID uuid.UUID) ([]*MeetingParticipant, error) {
 	query := `
 		SELECT mp.id, mp.meeting_id, mp.user_id, mp.guest_name,
-			   COALESCE(u.username, mp.guest_name) as display_name,
+			   COALESCE(u.username.go, mp.guest_name) as display_name,
 			   mp.participant_role, mp.joined_at, mp.left_at,
 			   mp.is_active, mp.audio_enabled, mp.video_enabled,
 			   mp.screen_sharing, mp.connection_quality
