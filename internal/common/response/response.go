@@ -12,6 +12,13 @@ func Success(c *fiber.Ctx, data interface{}) error {
 	})
 }
 
+func Error(c *fiber.Ctx, status int, message string) error {
+	return c.Status(status).JSON(fiber.Map{
+		"success": false,
+		"error":   message,
+	})
+}
+
 func BadRequest(c *fiber.Ctx, message string) error {
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"success": false,

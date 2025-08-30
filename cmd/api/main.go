@@ -13,6 +13,7 @@ import (
 	"q7o/internal/contact"
 	"q7o/internal/email"
 	"q7o/internal/meeting"
+	"q7o/internal/settings"
 	"q7o/internal/upload"
 	"q7o/internal/user"
 	"q7o/pkg/logger"
@@ -77,11 +78,13 @@ func main() {
 	callRepo := call.NewRepository(db)
 	meetingRepo := meeting.NewRepository(db)
 	contactRepo := contact.NewRepository(db)
+	settingsRepo := settings.NewRepository(db)
 
 	// Initialize services
 	userService := user.NewService(userRepo, emailService, uploadService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
 	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
+	settingsService := settings.NewService(settingsRepo)
 
 	// Contact service без зависимости от call service
 	contactService := contact.NewService(contactRepo, userRepo, wsHub)
@@ -193,6 +196,13 @@ func main() {
 	contactGroup.Post("/reject/:request_id", contactHandler.RejectContactRequest)
 	contactGroup.Delete("/:contact_id", contactHandler.RemoveContact)
 	contactGroup.Get("/check/:user_id", contactHandler.CheckContact)
+
+	// Settings routes
+	settingsHandler := settings.NewHandler(settingsService)
+	settingsGroup := api.Group("/settings", auth.RequireAuth(cfg.JWT))
+	settingsGroup.Get("/", settingsHandler.GetSettings)
+	settingsGroup.Put("/", settingsHandler.UpdateSettings)
+	settingsGroup.Delete("/", settingsHandler.DeleteSettings)
 
 	// Static files для аватаров
 	app.Static("/uploads", "./uploads")
