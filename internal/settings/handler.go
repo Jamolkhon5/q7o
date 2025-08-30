@@ -30,7 +30,7 @@ func NewHandler(service Service) *Handler {
 // @Failure 500 {object} response.Response
 // @Router /api/v1/settings [get]
 func (h *Handler) GetSettings(c *fiber.Ctx) error {
-	userIDStr := c.Locals("user_id").(string)
+	userIDStr := c.Locals("userID").(string)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid user ID")
@@ -59,7 +59,7 @@ func (h *Handler) GetSettings(c *fiber.Ctx) error {
 // @Failure 500 {object} response.Response
 // @Router /api/v1/settings [put]
 func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
-	userIDStr := c.Locals("user_id").(string)
+	userIDStr := c.Locals("userID").(string)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid user ID")
@@ -96,7 +96,7 @@ func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
 // @Failure 500 {object} response.Response
 // @Router /api/v1/settings [delete]
 func (h *Handler) DeleteSettings(c *fiber.Ctx) error {
-	userIDStr := c.Locals("user_id").(string)
+	userIDStr := c.Locals("userID").(string)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid user ID")

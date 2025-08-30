@@ -67,7 +67,7 @@ func (s *Service) ValidateToken(tokenString string) (bool, uuid.UUID, error) {
 	if err != nil {
 		return false, uuid.Nil, err
 	}
-	
+
 	return true, claims.UserID, nil
 }
 
