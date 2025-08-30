@@ -90,7 +90,7 @@ func main() {
 	contactService := contact.NewService(contactRepo, userRepo, wsHub)
 
 	// Call service с contact service
-	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, redis, wsHub)
+	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, cfg.JWT, redis, wsHub)
 	// Устанавливаем contactService в callService после создания
 	callService.SetContactService(contactService)
 

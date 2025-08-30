@@ -221,10 +221,18 @@ func (h *Handler) EndCall(c *fiber.Ctx) error {
 
 // HandleWebSocket обрабатывает WebSocket соединения для сигналинга звонков
 func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
-	// Получаем userID из query параметров
+	// Получаем userID и token из query параметров
 	userID := c.Query("user_id")
+	token := c.Query("token")
+	
 	if userID == "" {
 		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"user_id required"}`))
+		c.Close()
+		return
+	}
+	
+	if token == "" {
+		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"token required"}`))
 		c.Close()
 		return
 	}
@@ -233,6 +241,21 @@ func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
 		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"invalid user_id"}`))
+		c.Close()
+		return
+	}
+	
+	// Проверяем токен через сервис auth
+	valid, tokenUID, err := h.service.ValidateToken(token)
+	if err != nil || !valid {
+		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"invalid token"}`))
+		c.Close()
+		return
+	}
+	
+	// Проверяем что userID соответствует токену
+	if tokenUID.String() != userID {
+		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"user_id mismatch"}`))
 		c.Close()
 		return
 	}

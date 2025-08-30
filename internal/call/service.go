@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"q7o/config"
+	"q7o/internal/auth"
 	"q7o/internal/common/utils"
 	"q7o/internal/user"
 )
@@ -24,18 +25,20 @@ type Service struct {
 	livekit        *LiveKitService
 	redis          *redis.Client
 	cfg            config.LiveKitConfig
+	jwtConfig      config.JWTConfig
 	wsHub          *WSHub
 	contactService ContactService
 }
 
-func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, redis *redis.Client, wsHub *WSHub) *Service {
+func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, jwtConfig config.JWTConfig, redis *redis.Client, wsHub *WSHub) *Service {
 	return &Service{
-		repo:     repo,
-		userRepo: userRepo,
-		livekit:  NewLiveKitService(cfg),
-		redis:    redis,
-		cfg:      cfg,
-		wsHub:    wsHub,
+		repo:      repo,
+		userRepo:  userRepo,
+		livekit:   NewLiveKitService(cfg),
+		redis:     redis,
+		cfg:       cfg,
+		jwtConfig: jwtConfig,
+		wsHub:     wsHub,
 	}
 }
 
@@ -56,6 +59,16 @@ func (s *Service) GetLiveKitURL() string {
 
 func (s *Service) GenerateCallToken(roomName string, userID uuid.UUID, username string) (string, error) {
 	return s.livekit.GenerateToken(roomName, userID, username, "participant")
+}
+
+// ValidateToken проверяет JWT токен
+func (s *Service) ValidateToken(tokenString string) (bool, uuid.UUID, error) {
+	claims, err := auth.ValidateToken(tokenString, s.jwtConfig.Secret)
+	if err != nil {
+		return false, uuid.Nil, err
+	}
+	
+	return true, claims.UserID, nil
 }
 
 func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, error) {
