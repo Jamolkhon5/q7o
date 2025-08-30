@@ -48,7 +48,8 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 	query := `
         SELECT id, username, first_name, last_name, email, password_hash, 
                email_verified, email_verification_code, email_verification_expires,
-               avatar_url, status, last_seen, created_at, updated_at
+               avatar_url, status, last_seen, created_at, updated_at,
+               phone, bio, date_of_birth, location, timezone
         FROM users WHERE id = $1
     `
 
@@ -59,6 +60,7 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 		&user.EmailVerified, &user.EmailVerificationCode,
 		&user.EmailVerificationExpires, &user.AvatarURL,
 		&user.Status, &user.LastSeen, &user.CreatedAt, &user.UpdatedAt,
+		&user.Phone, &user.Bio, &user.DateOfBirth, &user.Location, &user.Timezone,
 	)
 
 	if err == sql.ErrNoRows {
@@ -72,7 +74,8 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	query := `
         SELECT id, username, first_name, last_name, email, password_hash, 
                email_verified, email_verification_code, email_verification_expires,
-               avatar_url, status, last_seen, created_at, updated_at
+               avatar_url, status, last_seen, created_at, updated_at,
+               phone, bio, date_of_birth, location, timezone
         FROM users WHERE email = $1
     `
 
@@ -83,6 +86,7 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 		&user.EmailVerified, &user.EmailVerificationCode,
 		&user.EmailVerificationExpires, &user.AvatarURL,
 		&user.Status, &user.LastSeen, &user.CreatedAt, &user.UpdatedAt,
+		&user.Phone, &user.Bio, &user.DateOfBirth, &user.Location, &user.Timezone,
 	)
 
 	if err == sql.ErrNoRows {
@@ -95,7 +99,8 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 func (r *Repository) FindByUsername(ctx context.Context, username string) (*User, error) {
 	query := `
         SELECT id, username, first_name, last_name, email, avatar_url, 
-               status, last_seen, created_at
+               status, last_seen, created_at,
+               phone, bio, date_of_birth, location, timezone
         FROM users WHERE username = $1
     `
 
@@ -104,6 +109,7 @@ func (r *Repository) FindByUsername(ctx context.Context, username string) (*User
 		&user.ID, &user.Username, &user.FirstName, &user.LastName,
 		&user.Email, &user.AvatarURL,
 		&user.Status, &user.LastSeen, &user.CreatedAt,
+		&user.Phone, &user.Bio, &user.DateOfBirth, &user.Location, &user.Timezone,
 	)
 
 	return user, err
@@ -157,13 +163,20 @@ func (r *Repository) Update(ctx context.Context, id uuid.UUID, updates *UpdateUs
             last_name = COALESCE($4, last_name),
             avatar_url = COALESCE($5, avatar_url),
             status = COALESCE($6, status),
+            phone = COALESCE($7, phone),
+            bio = COALESCE($8, bio),
+            date_of_birth = COALESCE($9, date_of_birth),
+            location = COALESCE($10, location),
+            timezone = COALESCE($11, timezone),
             updated_at = NOW()
         WHERE id = $1
     `
 
 	_, err := r.db.ExecContext(ctx, query, id,
 		updates.Username, updates.FirstName, updates.LastName,
-		updates.AvatarURL, updates.Status)
+		updates.AvatarURL, updates.Status,
+		updates.Phone, updates.Bio, updates.DateOfBirth,
+		updates.Location, updates.Timezone)
 	return err
 }
 
@@ -207,7 +220,8 @@ func (r *Repository) UpdateVerificationCode(ctx context.Context, id uuid.UUID, c
 func (r *Repository) Search(ctx context.Context, query string, limit, offset int) ([]*User, error) {
 	sqlQuery := `
         SELECT id, username, first_name, last_name, email, avatar_url, 
-               status, last_seen, created_at
+               status, last_seen, created_at,
+               phone, bio, date_of_birth, location, timezone
         FROM users 
         WHERE username ILIKE $1 OR email ILIKE $1 
               OR first_name ILIKE $1 OR last_name ILIKE $1
@@ -230,6 +244,7 @@ func (r *Repository) Search(ctx context.Context, query string, limit, offset int
 			&user.ID, &user.Username, &user.FirstName, &user.LastName,
 			&user.Email, &user.AvatarURL,
 			&user.Status, &user.LastSeen, &user.CreatedAt,
+			&user.Phone, &user.Bio, &user.DateOfBirth, &user.Location, &user.Timezone,
 		)
 		if err != nil {
 			return nil, err
@@ -238,4 +253,23 @@ func (r *Repository) Search(ctx context.Context, query string, limit, offset int
 	}
 
 	return users, nil
+}
+
+func (r *Repository) UpdateAvatarURL(ctx context.Context, id uuid.UUID, avatarURL string) error {
+	query := `UPDATE users SET avatar_url = $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, id, avatarURL)
+	return err
+}
+
+func (r *Repository) PhoneExists(ctx context.Context, phone string) (bool, error) {
+	query := `SELECT COUNT(*) FROM users WHERE phone = $1`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, phone).Scan(&count)
+	return count > 0, err
+}
+
+func (r *Repository) UpdatePassword(ctx context.Context, id uuid.UUID, newPasswordHash string) error {
+	query := `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, id, newPasswordHash)
+	return err
 }
