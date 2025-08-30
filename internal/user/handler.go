@@ -115,9 +115,16 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 		return response.ValidationError(c, err)
 	}
 
+	// Validate phone number if provided
+	if req.Phone != nil && *req.Phone != "" {
+		if err := h.service.ValidatePhoneNumber(*req.Phone); err != nil {
+			return response.BadRequest(c, err.Error())
+		}
+	}
+
 	user, err := h.service.UpdateProfile(c.Context(), uid, &req)
 	if err != nil {
-		if err.Error() == "username already taken" {
+		if err.Error() == "username already taken" || err.Error() == "phone number already taken" {
 			return response.Conflict(c, err.Error())
 		}
 		return response.InternalError(c, err)
@@ -171,5 +178,76 @@ func (h *Handler) SearchUsers(c *fiber.Ctx) error {
 	return response.Success(c, fiber.Map{
 		"users": users,
 		"count": len(users),
+	})
+}
+
+func (h *Handler) UploadAvatar(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return response.BadRequest(c, "Invalid user ID")
+	}
+
+	// Get uploaded file
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		return response.BadRequest(c, "Avatar file is required")
+	}
+
+	// Upload avatar using service
+	user, err := h.service.UploadAvatar(c.Context(), uid, file)
+	if err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	return response.Success(c, fiber.Map{
+		"message": "Avatar uploaded successfully",
+		"user":    user,
+	})
+}
+
+func (h *Handler) DeleteAvatar(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return response.BadRequest(c, "Invalid user ID")
+	}
+
+	user, err := h.service.DeleteAvatar(c.Context(), uid)
+	if err != nil {
+		return response.InternalError(c, err)
+	}
+
+	return response.Success(c, fiber.Map{
+		"message": "Avatar deleted successfully",
+		"user":    user,
+	})
+}
+
+func (h *Handler) ChangePassword(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return response.BadRequest(c, "Invalid user ID")
+	}
+
+	var req ChangePasswordDTO
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+
+	if err := h.validate.Struct(&req); err != nil {
+		return response.ValidationError(c, err)
+	}
+
+	if err := h.service.ChangePassword(c.Context(), uid, &req); err != nil {
+		if err.Error() == "current password is incorrect" {
+			return response.BadRequest(c, err.Error())
+		}
+		return response.InternalError(c, err)
+	}
+
+	return response.Success(c, fiber.Map{
+		"message": "Password changed successfully",
 	})
 }

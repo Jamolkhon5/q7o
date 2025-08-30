@@ -13,8 +13,10 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/livekit/protocol v1.39.3
 	github.com/mozillazg/go-unidecode v0.2.0
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/redis/go-redis/v9 v9.8.0
 	golang.org/x/crypto v0.41.0
+	golang.org/x/image v0.30.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 

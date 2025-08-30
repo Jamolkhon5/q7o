@@ -13,6 +13,7 @@ import (
 	"q7o/internal/contact"
 	"q7o/internal/email"
 	"q7o/internal/meeting"
+	"q7o/internal/upload"
 	"q7o/internal/user"
 	"q7o/pkg/logger"
 	"syscall"
@@ -30,6 +31,12 @@ func main() {
 
 	// Initialize logger
 	log := logger.New(cfg.AppEnv)
+
+	// Создаем папку для загрузки файлов
+	avatarDir := "./uploads/avatars"
+	if err := os.MkdirAll(avatarDir, 0755); err != nil {
+		log.Fatal("Failed to create avatar directory: ", err)
+	}
 
 	// Initialize database
 	db, err := database.NewPostgres(cfg.Database)
@@ -60,6 +67,10 @@ func main() {
 	// Initialize email service
 	emailService := email.NewService(cfg.SMTP)
 
+	// Initialize upload service
+	uploadConfig := config.LoadUploadConfig()
+	uploadService := upload.NewService(uploadConfig)
+
 	// Initialize repositories
 	userRepo := user.NewRepository(db)
 	authRepo := auth.NewRepository(db, redis)
@@ -68,7 +79,7 @@ func main() {
 	contactRepo := contact.NewRepository(db)
 
 	// Initialize services
-	userService := user.NewService(userRepo, emailService)
+	userService := user.NewService(userRepo, emailService, uploadService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
 	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
 
@@ -134,6 +145,9 @@ func main() {
 	userGroup := api.Group("/users", auth.RequireAuth(cfg.JWT))
 	userGroup.Get("/me", userHandler.GetMe)
 	userGroup.Put("/me", userHandler.UpdateProfile)
+	userGroup.Post("/me/avatar", userHandler.UploadAvatar)
+	userGroup.Delete("/me/avatar", userHandler.DeleteAvatar)
+	userGroup.Put("/me/password", userHandler.ChangePassword)
 	userGroup.Get("/search", userHandler.SearchUsers)
 	userGroup.Get("/:id", userHandler.GetUser)
 
@@ -179,6 +193,9 @@ func main() {
 	contactGroup.Post("/reject/:request_id", contactHandler.RejectContactRequest)
 	contactGroup.Delete("/:contact_id", contactHandler.RemoveContact)
 	contactGroup.Get("/check/:user_id", contactHandler.CheckContact)
+
+	// Static files для аватаров
+	app.Static("/uploads", "./uploads")
 
 	// WebSocket for call signaling
 	app.Get("/ws/call", websocket.New(func(c *websocket.Conn) {
