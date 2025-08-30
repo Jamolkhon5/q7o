@@ -2,7 +2,6 @@ package config
 
 import (
 	"github.com/joho/godotenv"
-	"log"
 	"os"
 )
 
@@ -54,9 +53,8 @@ type SMTPConfig struct {
 }
 
 func Load() *Config {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
-	}
+	// Try to load .env file, ignore any errors (file might not exist)
+	_ = godotenv.Load()
 
 	return &Config{
 		AppEnv:  getEnv("APP_ENV", "development"),
