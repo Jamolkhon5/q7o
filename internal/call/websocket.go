@@ -65,14 +65,23 @@ func (h *WSHub) Run() {
 			}
 
 		case signal := <-h.broadcast:
+			// Validate signal before sending
+			if signal.Type == "" || signal.ToID == uuid.Nil {
+				log.Printf("Invalid signal: %+v", signal)
+				continue
+			}
+
 			// Send to specific client
 			if conn, ok := h.clients[signal.ToID]; ok {
+				// Log what we're sending
+				log.Printf("Sending %s signal to %s: %+v", signal.Type, signal.ToID, signal)
+				
 				if err := conn.WriteJSON(signal); err != nil {
 					log.Printf("Error sending signal: %v", err)
 					conn.Close()
 					delete(h.clients, signal.ToID)
 				} else {
-					log.Printf("Sent %s signal to %s", signal.Type, signal.ToID)
+					log.Printf("Successfully sent %s signal to %s", signal.Type, signal.ToID)
 				}
 			} else {
 				// Store in Redis for offline delivery
@@ -115,6 +124,8 @@ func (h *WSHub) GetOfflineSignals(userID uuid.UUID) ([]*CallSignal, error) {
 		var signal CallSignal
 		if err := json.Unmarshal([]byte(d), &signal); err == nil {
 			signals = append(signals, &signal)
+		} else {
+			log.Printf("Failed to unmarshal offline signal: %v, data: %s", err, d)
 		}
 	}
 
