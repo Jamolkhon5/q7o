@@ -230,3 +230,9 @@ func (r *Repository) HasExistingRequest(ctx context.Context, userID1, userID2 uu
 	err := r.db.QueryRowContext(ctx, query, userID1, userID2).Scan(&exists)
 	return exists, err
 }
+
+func (r *Repository) DeleteContactRequest(ctx context.Context, requestID uuid.UUID) error {
+	query := `DELETE FROM contact_requests WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, requestID)
+	return err
+}
