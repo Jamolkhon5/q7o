@@ -220,17 +220,18 @@ func (h *Handler) EndCall(c *fiber.Ctx) error {
 }
 
 // HandleWebSocket обрабатывает WebSocket соединения для сигналинга звонков
+// HandleWebSocket обрабатывает WebSocket соединения для сигналинга звонков
 func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
 	// Получаем userID и token из query параметров
 	userID := c.Query("user_id")
 	token := c.Query("token")
-	
+
 	if userID == "" {
 		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"user_id required"}`))
 		c.Close()
 		return
 	}
-	
+
 	if token == "" {
 		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"token required"}`))
 		c.Close()
@@ -244,7 +245,7 @@ func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
 		c.Close()
 		return
 	}
-	
+
 	// Проверяем токен через сервис auth
 	valid, tokenUID, err := h.service.ValidateToken(token)
 	if err != nil || !valid {
@@ -252,7 +253,7 @@ func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
 		c.Close()
 		return
 	}
-	
+
 	// Проверяем что userID соответствует токену
 	if tokenUID.String() != userID {
 		c.WriteMessage(websocket.TextMessage, []byte(`{"error":"user_id mismatch"}`))
@@ -306,8 +307,14 @@ func (h *Handler) HandleWebSocket(c *websocket.Conn, hub *WSHub) {
 
 			var signal CallSignal
 			if err := json.Unmarshal(msg, &signal); err == nil {
+				// ИСПРАВЛЕНИЕ: Игнорируем служебные сигналы
+				if signal.Type == "connected" {
+					// Не пересылаем connected сигнал, это только для подтверждения соединения
+					continue
+				}
+
 				signal.FromID = uid
-				// Пересылаем сигнал получателю
+				// Пересылаем только реальные сигналы звонков и контактов
 				hub.broadcast <- &signal
 			}
 		}
