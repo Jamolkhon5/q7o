@@ -47,6 +47,9 @@ func (s *Service) SendContactRequest(ctx context.Context, senderID uuid.UUID, dt
 		return nil, errors.New("already in contacts")
 	}
 
+	// Очищаем старые отклоненные/принятые запросы перед проверкой
+	s.repo.CleanupOldRequests(ctx, senderID, receiverID)
+
 	// Check for existing pending request (in either direction)
 	hasRequest, _ := s.repo.HasExistingRequest(ctx, senderID, receiverID)
 	if hasRequest {
@@ -102,13 +105,13 @@ func (s *Service) AcceptContactRequest(ctx context.Context, userID, requestID uu
 		return errors.New("request already processed")
 	}
 
-	// Update request status
-	if err := s.repo.UpdateRequestStatus(ctx, requestID, "accepted"); err != nil {
+	// Create contact relationship
+	if err := s.repo.CreateContact(ctx, request.SenderID, request.ReceiverID); err != nil {
 		return err
 	}
 
-	// Create contact relationship
-	if err := s.repo.CreateContact(ctx, request.SenderID, request.ReceiverID); err != nil {
+	// Удаляем запрос после принятия (для последовательности с отклонением)
+	if err := s.repo.DeleteContactRequest(ctx, requestID); err != nil {
 		return err
 	}
 
