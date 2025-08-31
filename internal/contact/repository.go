@@ -236,3 +236,14 @@ func (r *Repository) DeleteContactRequest(ctx context.Context, requestID uuid.UU
 	_, err := r.db.ExecContext(ctx, query, requestID)
 	return err
 }
+
+func (r *Repository) CleanupOldRequests(ctx context.Context, userID1, userID2 uuid.UUID) error {
+	query := `
+		DELETE FROM contact_requests 
+		WHERE ((sender_id = $1 AND receiver_id = $2) 
+		    OR (sender_id = $2 AND receiver_id = $1))
+		  AND status IN ('rejected', 'accepted')
+	`
+	_, err := r.db.ExecContext(ctx, query, userID1, userID2)
+	return err
+}
