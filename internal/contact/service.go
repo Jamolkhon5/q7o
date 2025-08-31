@@ -148,8 +148,8 @@ func (s *Service) RejectContactRequest(ctx context.Context, userID, requestID uu
 		return errors.New("request already processed")
 	}
 
-	// Update request status
-	if err := s.repo.UpdateRequestStatus(ctx, requestID, "rejected"); err != nil {
+	// Удаляем запрос вместо изменения статуса - это позволит отправлять повторные запросы
+	if err := s.repo.DeleteContactRequest(ctx, requestID); err != nil {
 		return err
 	}
 
