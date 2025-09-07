@@ -4,13 +4,12 @@ services:
     container_name: q7o_postgres
     environment:
       POSTGRES_USER: ${DB_USER:-q7o}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-q7o_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-q7o_secret_prod_2025}
       POSTGRES_DB: ${DB_NAME:-q7o_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
     networks:
       - q7o_network
     healthcheck:
@@ -40,27 +39,37 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - APP_ENV=${APP_ENV:-development}
+      - APP_ENV=${APP_ENV:-production}
       - APP_PORT=${APP_PORT:-8080}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=${DB_USER:-q7o}
-      - DB_PASSWORD=${DB_PASSWORD:-q7o_secret}
+      - DB_PASSWORD=${DB_PASSWORD:-q7o_secret_prod_2025}
       - DB_NAME=${DB_NAME:-q7o_db}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
-      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key_here_min_32_chars}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-your_refresh_secret_key_32_chars}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_key_for_production_min_32_chars_xyz123}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-refresh_secret_key_for_production_32_chars_abc456}
       - LIVEKIT_HOST=ws://livekit:7880
-      - LIVEKIT_PUBLIC_HOST=wss://neftemodel.ru:7880  # ДОБАВЛЕНО!
+      - LIVEKIT_PUBLIC_HOST=wss://neftemodel.ru:7880
       - LIVEKIT_API_KEY=APIsUhpPAFFUS3t
       - LIVEKIT_API_SECRET=Fmgo7juBGyFYTQ6o6B7eC6cX9gftNEw46BoFffaZ2DzD
+      # ОБНОВЛЕННАЯ ПОЧТА
       - SMTP_HOST=${SMTP_HOST:-smtp.mail.ru}
       - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_USER=${SMTP_USER:-info.synchron@inbox.ru}
-      - SMTP_PASS=${SMTP_PASS:-A9DrferiSPXsZkYrieLi}
-      - SMTP_FROM=${SMTP_FROM:-info.synchron@inbox.ru}
+      - SMTP_USER=${SMTP_USER:-q7o.ru@bk.ru}
+      - SMTP_PASS=${SMTP_PASS:-gfI5OauQ8d6vZL4Jpy8U}
+      - SMTP_FROM=${SMTP_FROM:-q7o.ru@bk.ru}
+      # FIREBASE PUSH NOTIFICATIONS
+      - FIREBASE_CREDENTIALS_PATH=./q7o-ru-firebase-adminsdk-fbsvc-fe9b9a43ee.json
+      - FIREBASE_PROJECT_ID=q7o-ru
+      # APPLE PUSH (заглушки для iOS)
+      - APNS_AUTH_TOKEN=${APNS_AUTH_TOKEN:-pending_ios_setup}
+      - APNS_VOIP_AUTH_TOKEN=${APNS_VOIP_AUTH_TOKEN:-pending_ios_setup}
+      - APNS_BUNDLE_ID=${APNS_BUNDLE_ID:-com.q7o.app}
+      - APNS_VOIP_BUNDLE_ID=${APNS_VOIP_BUNDLE_ID:-com.q7o.app.voip}
+      - APNS_SANDBOX=${APNS_SANDBOX:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,6 +79,8 @@ services:
       - q7o_network
     volumes:
       - ./web:/app/web
+      # ВАЖНО: монтируем Firebase credentials
+      - ./q7o-ru-firebase-adminsdk-fbsvc-fe9b9a43ee.json:/root/q7o-ru-firebase-adminsdk-fbsvc-fe9b9a43ee.json
     restart: unless-stopped
 
 volumes:
