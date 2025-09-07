@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"log"
 	"q7o/internal/common/response"
+	"q7o/internal/push"
 )
 
 type Handler struct {
@@ -61,8 +62,8 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 	callerID, _ := uuid.Parse(userID)
 	calleeID, _ := uuid.Parse(req.CalleeID)
 
-	// Создаем запись о звонке и получаем токен для caller
-	call, callerToken, err := h.service.InitiateCall(c.Context(), callerID, calleeID, req.CallType)
+	// Создаем запись о звонке и получаем токены для обеих сторон
+	call, callerToken, calleeToken, err := h.service.InitiateCall(c.Context(), callerID, calleeID, req.CallType)
 	if err != nil {
 		return response.InternalError(c, err)
 	}
@@ -92,6 +93,27 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 	h.wsHub.broadcast <- signal
 
 	log.Printf("Sent ring signal from %s to %s for call %s", callerID, calleeID, call.ID)
+
+	// 🚀 КРИТИЧЕСКИ ВАЖНО: Отправляем push уведомление для фонового режима
+	// Это позволит получать звонки даже когда приложение закрыто
+	if h.service.pushService != nil {
+		go func() {
+			pushData := &push.CallPushData{
+				CallID:     call.ID.String(),
+				CallerID:   call.CallerID.String(),
+				CallerName: call.CallerName,
+				CallType:   call.CallType,
+				RoomName:   call.RoomName,
+				Token:      calleeToken, // Передаем токен для прямого подключения
+			}
+
+			if err := h.service.pushService.SendCallNotification(c.Context(), call.CalleeID, pushData); err != nil {
+				log.Printf("Failed to send push notification for call %s: %v", call.ID, err)
+			} else {
+				log.Printf("Push notification sent successfully for call %s", call.ID)
+			}
+		}()
+	}
 
 	// Возвращаем токен звонящему сразу
 	return response.Success(c, fiber.Map{

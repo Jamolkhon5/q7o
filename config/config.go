@@ -13,6 +13,7 @@ type Config struct {
 	JWT      JWTConfig
 	LiveKit  LiveKitConfig
 	SMTP     SMTPConfig
+	Push     PushConfig
 }
 
 type DatabaseConfig struct {
@@ -50,6 +51,15 @@ type SMTPConfig struct {
 	User string
 	Pass string
 	From string
+}
+
+type PushConfig struct {
+	FCMServerKey        string
+	APNsAuthToken       string
+	APNsVoIPAuthToken   string
+	APNsBundleID        string
+	APNsVoIPBundleID    string
+	APNsSandbox         bool
 }
 
 func Load() *Config {
@@ -90,6 +100,14 @@ func Load() *Config {
 			User: getEnv("SMTP_USER", ""),
 			Pass: getEnv("SMTP_PASS", ""),
 			From: getEnv("SMTP_FROM", ""),
+		},
+		Push: PushConfig{
+			FCMServerKey:        getEnv("FCM_SERVER_KEY", ""),
+			APNsAuthToken:       getEnv("APNS_AUTH_TOKEN", ""),
+			APNsVoIPAuthToken:   getEnv("APNS_VOIP_AUTH_TOKEN", ""),
+			APNsBundleID:        getEnv("APNS_BUNDLE_ID", "com.q7o.app"),
+			APNsVoIPBundleID:    getEnv("APNS_VOIP_BUNDLE_ID", "com.q7o.app.voip"),
+			APNsSandbox:         getEnv("APNS_SANDBOX", "true") == "true",
 		},
 	}
 }

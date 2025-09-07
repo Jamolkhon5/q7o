@@ -10,6 +10,7 @@ import (
 	"q7o/config"
 	"q7o/internal/auth"
 	"q7o/internal/common/utils"
+	"q7o/internal/push"
 	"q7o/internal/user"
 )
 
@@ -28,6 +29,7 @@ type Service struct {
 	jwtConfig      config.JWTConfig
 	wsHub          *WSHub
 	contactService ContactService
+	pushService    *push.Service // Добавляем push service
 }
 
 func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitConfig, jwtConfig config.JWTConfig, redis *redis.Client, wsHub *WSHub) *Service {
@@ -45,6 +47,11 @@ func NewService(repo *Repository, userRepo *user.Repository, cfg config.LiveKitC
 // SetContactService устанавливает contact service после инициализации
 func (s *Service) SetContactService(cs ContactService) {
 	s.contactService = cs
+}
+
+// SetPushService устанавливает push service после инициализации
+func (s *Service) SetPushService(ps *push.Service) {
+	s.pushService = ps
 }
 
 func (s *Service) GetLiveKitURL() string {
@@ -71,36 +78,36 @@ func (s *Service) ValidateToken(tokenString string) (bool, uuid.UUID, error) {
 	return true, claims.UserID, nil
 }
 
-func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, error) {
+func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID, callType string) (*Call, string, string, error) {
 	// Проверяем что пользователи являются контактами
 	if s.contactService != nil {
 		isContact, err := s.contactService.IsContact(ctx, callerID, calleeID)
 		if err != nil {
-			return nil, "", errors.New("failed to check contact status")
+			return nil, "", "", errors.New("failed to check contact status")
 		}
 		if !isContact {
-			return nil, "", errors.New("user is not in your contacts")
+			return nil, "", "", errors.New("user is not in your contacts")
 		}
 	}
 
 	// Проверяем существование пользователей
 	caller, err := s.userRepo.FindByID(ctx, callerID)
 	if err != nil {
-		return nil, "", errors.New("caller not found")
+		return nil, "", "", errors.New("caller not found")
 	}
 
 	callee, err := s.userRepo.FindByID(ctx, calleeID)
 	if err != nil {
-		return nil, "", errors.New("callee not found")
+		return nil, "", "", errors.New("callee not found")
 	}
 
 	// Проверяем доступность
 	if caller.Status == "busy" {
-		return nil, "", errors.New("caller is already in a call")
+		return nil, "", "", errors.New("caller is already in a call")
 	}
 
 	if callee.Status == "busy" {
-		return nil, "", errors.New("user is busy")
+		return nil, "", "", errors.New("user is busy")
 	}
 
 	// Генерируем уникальное имя комнаты
@@ -112,27 +119,27 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 		RoomName:   roomName,
 		CallerID:   callerID,
 		CalleeID:   calleeID,
-		CallerName: caller.Username,
-		CalleeName: callee.Username,
+		CallerName: caller.FirstName + " " + caller.LastName,
+		CalleeName: callee.FirstName + " " + callee.LastName,
 		CallType:   callType,
 		Status:     "initiated",
 		StartedAt:  time.Now(),
 	}
 
 	if err := s.repo.Create(ctx, call); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Генерируем токен для звонящего с ролью "caller"
 	callerToken, err := s.livekit.GenerateToken(roomName, callerID, caller.Username, "caller")
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Генерируем токен для получателя с ролью "callee" и сохраняем в Redis
 	calleeToken, err := s.livekit.GenerateToken(roomName, calleeID, callee.Username, "callee")
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Сохраняем токен получателя в Redis
@@ -152,7 +159,7 @@ func (s *Service) InitiateCall(ctx context.Context, callerID, calleeID uuid.UUID
 	call.Status = "ringing"
 	s.repo.UpdateStatus(ctx, call.ID, "ringing", nil, nil)
 
-	return call, callerToken, nil
+	return call, callerToken, calleeToken, nil
 }
 
 // Остальные методы остаются без изменений...

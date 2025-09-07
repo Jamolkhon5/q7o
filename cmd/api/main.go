@@ -13,6 +13,7 @@ import (
 	"q7o/internal/contact"
 	"q7o/internal/email"
 	"q7o/internal/meeting"
+	"q7o/internal/push"
 	"q7o/internal/settings"
 	"q7o/internal/upload"
 	"q7o/internal/user"
@@ -79,20 +80,23 @@ func main() {
 	meetingRepo := meeting.NewRepository(db)
 	contactRepo := contact.NewRepository(db)
 	settingsRepo := settings.NewRepository(db)
+	pushRepo := push.NewRepository(db)
 
 	// Initialize services
 	userService := user.NewService(userRepo, emailService, uploadService)
 	authService := auth.NewService(authRepo, userRepo, emailService, cfg.JWT)
 	meetingService := meeting.NewService(meetingRepo, userRepo, cfg.LiveKit, redis)
 	settingsService := settings.NewService(settingsRepo)
+	pushService := push.NewService(pushRepo, cfg.Push)
 
 	// Contact service без зависимости от call service
 	contactService := contact.NewService(contactRepo, userRepo, wsHub)
 
-	// Call service с contact service
+	// Call service с contact service и push service
 	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, cfg.JWT, redis, wsHub)
-	// Устанавливаем contactService в callService после создания
+	// Устанавливаем зависимости в callService после создания
 	callService.SetContactService(contactService)
+	callService.SetPushService(pushService)
 
 	// Start cleanup goroutine for expired meetings
 	go meetingService.CleanupExpiredMeetings(context.Background())
@@ -203,6 +207,12 @@ func main() {
 	settingsGroup.Get("/", settingsHandler.GetSettings)
 	settingsGroup.Put("/", settingsHandler.UpdateSettings)
 	settingsGroup.Delete("/", settingsHandler.DeleteSettings)
+
+	// Push notification routes
+	pushHandler := push.NewHandler(pushService)
+	pushGroup := api.Group("/push", auth.RequireAuth(cfg.JWT))
+	pushGroup.Post("/register", pushHandler.RegisterToken)
+	pushGroup.Post("/deactivate", pushHandler.DeactivateToken)
 
 	// Static files для аватаров
 	app.Static("/uploads", "./uploads")

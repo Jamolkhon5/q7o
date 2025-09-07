@@ -36,14 +36,15 @@ func NewRepository(db *sql.DB) *Repository {
 func (r *Repository) Create(ctx context.Context, call *Call) error {
 	query := `
         INSERT INTO calls (
-            id, room_name, caller_id, callee_id, call_type,
-            status, started_at, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            id, room_name, caller_id, callee_id, caller_name, callee_name,
+            call_type, status, started_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `
 
 	_, err := r.db.ExecContext(ctx, query,
 		call.ID, call.RoomName, call.CallerID, call.CalleeID,
-		call.CallType, call.Status, call.StartedAt, time.Now(),
+		call.CallerName, call.CalleeName, call.CallType, call.Status,
+		call.StartedAt, time.Now(),
 	)
 
 	return err
@@ -51,17 +52,18 @@ func (r *Repository) Create(ctx context.Context, call *Call) error {
 
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*Call, error) {
 	query := `
-        SELECT id, room_name, caller_id, callee_id, call_type,
-               status, started_at, answered_at, ended_at, duration,
+        SELECT id, room_name, caller_id, callee_id, caller_name, callee_name,
+               call_type, status, started_at, answered_at, ended_at, duration,
                recording_url, created_at
-        FROM calls WHERE id = $1
+        FROM calls 
+        WHERE id = $1
     `
 
 	call := &Call{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&call.ID, &call.RoomName, &call.CallerID, &call.CalleeID,
-		&call.CallType, &call.Status, &call.StartedAt,
-		&call.AnsweredAt, &call.EndedAt, &call.Duration,
+		&call.CallerName, &call.CalleeName, &call.CallType, &call.Status,
+		&call.StartedAt, &call.AnsweredAt, &call.EndedAt, &call.Duration,
 		&call.RecordingURL, &call.CreatedAt,
 	)
 
@@ -87,8 +89,8 @@ func (r *Repository) UpdateDuration(ctx context.Context, id uuid.UUID, duration 
 
 func (r *Repository) GetUserCalls(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Call, error) {
 	query := `
-        SELECT id, room_name, caller_id, callee_id, call_type,
-               status, started_at, answered_at, ended_at, duration,
+        SELECT id, room_name, caller_id, callee_id, caller_name, callee_name,
+               call_type, status, started_at, answered_at, ended_at, duration,
                recording_url, created_at
         FROM calls 
         WHERE caller_id = $1 OR callee_id = $1
@@ -107,8 +109,8 @@ func (r *Repository) GetUserCalls(ctx context.Context, userID uuid.UUID, limit, 
 		call := &Call{}
 		err := rows.Scan(
 			&call.ID, &call.RoomName, &call.CallerID, &call.CalleeID,
-			&call.CallType, &call.Status, &call.StartedAt,
-			&call.AnsweredAt, &call.EndedAt, &call.Duration,
+			&call.CallerName, &call.CalleeName, &call.CallType, &call.Status,
+			&call.StartedAt, &call.AnsweredAt, &call.EndedAt, &call.Duration,
 			&call.RecordingURL, &call.CreatedAt,
 		)
 		if err != nil {
