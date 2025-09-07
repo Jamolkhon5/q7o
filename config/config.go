@@ -40,7 +40,7 @@ type JWTConfig struct {
 
 type LiveKitConfig struct {
 	Host       string
-	PublicHost string // ДОБАВЛЕНО
+	PublicHost string
 	APIKey     string
 	APISecret  string
 }
@@ -54,16 +54,16 @@ type SMTPConfig struct {
 }
 
 type PushConfig struct {
-	FCMServerKey        string
-	APNsAuthToken       string
-	APNsVoIPAuthToken   string
-	APNsBundleID        string
-	APNsVoIPBundleID    string
-	APNsSandbox         bool
+	FirebaseCredentialsPath string
+	FirebaseProjectID       string
+	APNsAuthToken           string
+	APNsVoIPAuthToken       string
+	APNsBundleID            string
+	APNsVoIPBundleID        string
+	APNsSandbox             bool
 }
 
 func Load() *Config {
-	// Try to load .env file, ignore any errors (file might not exist)
 	_ = godotenv.Load()
 
 	return &Config{
@@ -90,7 +90,7 @@ func Load() *Config {
 		},
 		LiveKit: LiveKitConfig{
 			Host:       getEnv("LIVEKIT_HOST", "localhost:7880"),
-			PublicHost: getEnv("LIVEKIT_PUBLIC_HOST", ""), // ДОБАВЛЕНО
+			PublicHost: getEnv("LIVEKIT_PUBLIC_HOST", ""),
 			APIKey:     getEnv("LIVEKIT_API_KEY", "devkey"),
 			APISecret:  getEnv("LIVEKIT_API_SECRET", "secret"),
 		},
@@ -102,12 +102,13 @@ func Load() *Config {
 			From: getEnv("SMTP_FROM", ""),
 		},
 		Push: PushConfig{
-			FCMServerKey:        getEnv("FCM_SERVER_KEY", ""),
-			APNsAuthToken:       getEnv("APNS_AUTH_TOKEN", ""),
-			APNsVoIPAuthToken:   getEnv("APNS_VOIP_AUTH_TOKEN", ""),
-			APNsBundleID:        getEnv("APNS_BUNDLE_ID", "com.q7o.app"),
-			APNsVoIPBundleID:    getEnv("APNS_VOIP_BUNDLE_ID", "com.q7o.app.voip"),
-			APNsSandbox:         getEnv("APNS_SANDBOX", "true") == "true",
+			FirebaseCredentialsPath: getEnv("FIREBASE_CREDENTIALS_PATH", ""),
+			FirebaseProjectID:       getEnv("FIREBASE_PROJECT_ID", ""),
+			APNsAuthToken:           getEnv("APNS_AUTH_TOKEN", ""),
+			APNsVoIPAuthToken:       getEnv("APNS_VOIP_AUTH_TOKEN", ""),
+			APNsBundleID:            getEnv("APNS_BUNDLE_ID", "com.q7o.app"),
+			APNsVoIPBundleID:        getEnv("APNS_VOIP_BUNDLE_ID", "com.q7o.app.voip"),
+			APNsSandbox:             getEnv("APNS_SANDBOX", "true") == "true",
 		},
 	}
 }

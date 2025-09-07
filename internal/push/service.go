@@ -16,13 +16,13 @@ import (
 )
 
 type Service struct {
-	repo   *Repository
-	config config.PushConfig
-	client *http.Client
+	repo       *Repository
+	config     config.PushConfig
+	client     *http.Client
+	firebaseV1 *FirebaseV1Service
 }
 
 func NewService(repo *Repository, cfg config.PushConfig) *Service {
-	// Настраиваем HTTP клиент с таймаутами
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
@@ -30,14 +30,25 @@ func NewService(repo *Repository, cfg config.PushConfig) *Service {
 		},
 	}
 
+	var firebaseV1 *FirebaseV1Service
+	if cfg.FirebaseCredentialsPath != "" {
+		fbService, err := NewFirebaseV1Service(cfg.FirebaseCredentialsPath, cfg.FirebaseProjectID)
+		if err != nil {
+			log.Printf("Failed to initialize Firebase V1: %v", err)
+		} else {
+			firebaseV1 = fbService
+			log.Printf("Firebase V1 initialized successfully")
+		}
+	}
+
 	return &Service{
-		repo:   repo,
-		config: cfg,
-		client: client,
+		repo:       repo,
+		config:     cfg,
+		client:     client,
+		firebaseV1: firebaseV1,
 	}
 }
 
-// RegisterDeviceToken регистрирует токен устройства
 func (s *Service) RegisterDeviceToken(ctx context.Context, userID uuid.UUID, req *RegisterTokenRequest) error {
 	token := &DeviceToken{
 		ID:         uuid.New(),
@@ -55,9 +66,7 @@ func (s *Service) RegisterDeviceToken(ctx context.Context, userID uuid.UUID, req
 	return s.repo.RegisterDeviceToken(ctx, token)
 }
 
-// SendCallNotification отправляет push уведомление о входящем звонке
 func (s *Service) SendCallNotification(ctx context.Context, userID uuid.UUID, callData *CallPushData) error {
-	// Получаем активные токены пользователя
 	tokens, err := s.repo.GetActiveTokensForUser(ctx, userID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get user tokens: %v, userID: %s", err, userID)
@@ -69,7 +78,6 @@ func (s *Service) SendCallNotification(ctx context.Context, userID uuid.UUID, ca
 		return fmt.Errorf("no active push tokens for user %s", userID)
 	}
 
-	// Отправляем на все активные устройства
 	var lastError error
 	successCount := 0
 
@@ -93,13 +101,11 @@ func (s *Service) SendCallNotification(ctx context.Context, userID uuid.UUID, ca
 				err, token.ID, token.PushType)
 			lastError = err
 
-			// Деактивируем токен если он недействителен
 			if s.isInvalidTokenError(err) {
 				s.repo.DeactivateToken(ctx, token.UserID, token.Token)
 			}
 		} else {
 			successCount++
-			// Обновляем время использования успешного токена
 			s.repo.UpdateTokenUsage(ctx, token.Token)
 		}
 	}
@@ -114,68 +120,18 @@ func (s *Service) SendCallNotification(ctx context.Context, userID uuid.UUID, ca
 	return nil
 }
 
-// sendFCMNotification отправляет FCM уведомление (Android)
 func (s *Service) sendFCMNotification(ctx context.Context, token *DeviceToken, callData *CallPushData) error {
-	message := FCMMessage{
-		To: token.Token,
-		Data: struct {
-			Type       string `json:"type"`
-			CallID     string `json:"call_id"`
-			CallerID   string `json:"caller_id"`
-			CallerName string `json:"caller_name"`
-			CallType   string `json:"call_type"`
-			RoomName   string `json:"room_name"`
-			Token      string `json:"token,omitempty"`
-		}{
-			Type:       "call_incoming",
-			CallID:     callData.CallID,
-			CallerID:   callData.CallerID,
-			CallerName: callData.CallerName,
-			CallType:   callData.CallType,
-			RoomName:   callData.RoomName,
-			Token:      callData.Token,
-		},
-		Priority:         "high", // Высокий приоритет для звонков
-		ContentAvailable: true,   // Пробуждает приложение в фоне
-		TimeToLive:       60,     // 1 минута на доставку
+	if s.firebaseV1 != nil {
+		return s.firebaseV1.SendCallNotification(ctx, token.Token, callData)
 	}
-
-	jsonData, err := json.Marshal(message)
-	if err != nil {
-		return fmt.Errorf("failed to marshal FCM message: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		"https://fcm.googleapis.com/fcm/send", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create FCM request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "key="+s.config.FCMServerKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send FCM request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("FCM request failed: status=%d, body=%s", resp.StatusCode, string(body))
-	}
-
-	log.Printf("INFO: FCM notification sent successfully, tokenID: %s", token.ID)
-	return nil
+	return fmt.Errorf("Firebase V1 not initialized")
 }
 
-// sendAPNsNotification отправляет APNs уведомление (iOS)
 func (s *Service) sendAPNsNotification(ctx context.Context, token *DeviceToken, callData *CallPushData) error {
 	message := APNsMessage{
 		DeviceToken: token.Token,
 	}
 
-	// Настраиваем payload для обычного push (не VoIP)
 	message.Payload.APS.Alert.Title = fmt.Sprintf("Входящий %s звонок",
 		map[string]string{"audio": "аудио", "video": "видео"}[callData.CallType])
 	message.Payload.APS.Alert.Body = fmt.Sprintf("От %s", callData.CallerName)
@@ -183,7 +139,6 @@ func (s *Service) sendAPNsNotification(ctx context.Context, token *DeviceToken, 
 	message.Payload.APS.ContentAvailable = 1
 	message.Payload.APS.Badge = 1
 
-	// Добавляем данные звонка
 	message.Payload.CallID = callData.CallID
 	message.Payload.CallerID = callData.CallerID
 	message.Payload.CallerName = callData.CallerName
@@ -196,7 +151,6 @@ func (s *Service) sendAPNsNotification(ctx context.Context, token *DeviceToken, 
 		return fmt.Errorf("failed to marshal APNs message: %w", err)
 	}
 
-	// Используем HTTP/2 APNs endpoint
 	endpoint := "https://api.push.apple.com/3/device/" + token.Token
 	if s.config.APNsSandbox {
 		endpoint = "https://api.sandbox.push.apple.com/3/device/" + token.Token
@@ -207,11 +161,10 @@ func (s *Service) sendAPNsNotification(ctx context.Context, token *DeviceToken, 
 		return fmt.Errorf("failed to create APNs request: %w", err)
 	}
 
-	// Настраиваем заголовки APNs
 	req.Header.Set("authorization", "bearer "+s.config.APNsAuthToken)
 	req.Header.Set("apns-topic", s.config.APNsBundleID)
 	req.Header.Set("apns-push-type", "alert")
-	req.Header.Set("apns-priority", "10") // Высокий приоритет
+	req.Header.Set("apns-priority", "10")
 	req.Header.Set("content-type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -229,13 +182,11 @@ func (s *Service) sendAPNsNotification(ctx context.Context, token *DeviceToken, 
 	return nil
 }
 
-// sendVoIPPushNotification отправляет VoIP push уведомление (iOS)
 func (s *Service) sendVoIPPushNotification(ctx context.Context, token *DeviceToken, callData *CallPushData) error {
 	message := VoIPPushMessage{
 		DeviceToken: token.Token,
 	}
 
-	// VoIP push содержит только данные, без alert
 	message.Payload.CallID = callData.CallID
 	message.Payload.CallerID = callData.CallerID
 	message.Payload.CallerName = callData.CallerName
@@ -248,7 +199,6 @@ func (s *Service) sendVoIPPushNotification(ctx context.Context, token *DeviceTok
 		return fmt.Errorf("failed to marshal VoIP message: %w", err)
 	}
 
-	// VoIP push endpoint
 	endpoint := "https://api.push.apple.com/3/device/" + token.Token
 	if s.config.APNsSandbox {
 		endpoint = "https://api.sandbox.push.apple.com/3/device/" + token.Token
@@ -259,9 +209,8 @@ func (s *Service) sendVoIPPushNotification(ctx context.Context, token *DeviceTok
 		return fmt.Errorf("failed to create VoIP request: %w", err)
 	}
 
-	// VoIP push заголовки
 	req.Header.Set("authorization", "bearer "+s.config.APNsVoIPAuthToken)
-	req.Header.Set("apns-topic", s.config.APNsVoIPBundleID) // Обычно .voip суффикс
+	req.Header.Set("apns-topic", s.config.APNsVoIPBundleID)
 	req.Header.Set("apns-push-type", "voip")
 	req.Header.Set("apns-priority", "10")
 	req.Header.Set("content-type", "application/json")
@@ -281,17 +230,14 @@ func (s *Service) sendVoIPPushNotification(ctx context.Context, token *DeviceTok
 	return nil
 }
 
-// isInvalidTokenError проверяет, является ли ошибка признаком недействительного токена
 func (s *Service) isInvalidTokenError(err error) bool {
 	errorStr := err.Error()
 
-	// FCM invalid token indicators
 	if bytes.Contains([]byte(errorStr), []byte("NotRegistered")) ||
 		bytes.Contains([]byte(errorStr), []byte("InvalidRegistration")) {
 		return true
 	}
 
-	// APNs invalid token indicators
 	if bytes.Contains([]byte(errorStr), []byte("BadDeviceToken")) ||
 		bytes.Contains([]byte(errorStr), []byte("Unregistered")) {
 		return true
@@ -300,13 +246,11 @@ func (s *Service) isInvalidTokenError(err error) bool {
 	return false
 }
 
-// DeactivateToken деактивирует токен устройства
 func (s *Service) DeactivateToken(ctx context.Context, userID uuid.UUID, token string) error {
 	return s.repo.DeactivateToken(ctx, userID, token)
 }
 
-// CleanupOldTokens очищает старые токены
 func (s *Service) CleanupOldTokens(ctx context.Context) error {
-	cutoff := time.Now().Add(-30 * 24 * time.Hour) // 30 дней назад
+	cutoff := time.Now().Add(-30 * 24 * time.Hour)
 	return s.repo.CleanupOldTokens(ctx, cutoff)
 }
