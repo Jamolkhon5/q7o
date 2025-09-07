@@ -94,7 +94,7 @@ func main() {
 
 	// Call service с contact service и push service
 	callService := call.NewService(callRepo, userRepo, cfg.LiveKit, cfg.JWT, redis, wsHub)
-	// Устанавливаем зависимости в callService после создания
+	// 🔥 КРИТИЧЕСКИ ВАЖНО: Устанавливаем зависимости в callService ПЕРЕД созданием handlers
 	callService.SetContactService(contactService)
 	callService.SetPushService(pushService)
 
@@ -158,7 +158,7 @@ func main() {
 	userGroup.Get("/search", userHandler.SearchUsers)
 	userGroup.Get("/:id", userHandler.GetUser)
 
-	// Call routes
+	// 🚀 КРИТИЧЕСКИ ВАЖНО: Call handler создается ПОСЛЕ установки всех зависимостей
 	callHandler := call.NewHandler(callService, wsHub)
 	callGroup := api.Group("/calls", auth.RequireAuth(cfg.JWT))
 	callGroup.Post("/token", callHandler.GetCallToken)
