@@ -20,15 +20,18 @@ jobs:
           script: |
             cd /opt/apps/q7o
             
-            # Сохраняем production настройки
-            cp .env.production .env.production.backup
+            # Сохраняем текущий .env если есть
+            if [ -f .env ]; then
+              cp .env .env.backup
+            fi
             
             # Обновляем код
             git pull origin main
             
-            # Восстанавливаем production настройки
-            cp .env.production.backup .env.production
-            cp .env.production .env
+            # Создаем .env из GitHub Secrets
+            cat > .env << 'EOL'
+            ${{ secrets.ENV_FILE }}
+            EOL
             
             # Пересобираем и перезапускаем контейнеры
             docker-compose down
@@ -39,15 +42,10 @@ jobs:
             docker-compose -f docker-compose.livekit.yml down
             docker-compose -f docker-compose.livekit.yml up -d
             
-            # Очистка неиспользуемых Docker образов (добавлено для экономии места)
+            # Очистка неиспользуемых Docker образов
             docker image prune -a -f --filter "until=1h"
             
             # Проверяем статус
             docker ps
-            
-            # Показываем сколько места освободили
-            echo "Disk usage after cleanup:"
-            df -h /
-            docker system df
             
             echo "Deploy completed!"
