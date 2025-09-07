@@ -1,6 +1,7 @@
 package call
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
@@ -98,6 +99,9 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 	// Это позволит получать звонки даже когда приложение закрыто
 	if h.service.pushService != nil {
 		go func() {
+			// ВАЖНО: Создаем новый context для горутины
+			ctx := context.Background()
+
 			pushData := &push.CallPushData{
 				CallID:     call.ID.String(),
 				CallerID:   call.CallerID.String(),
@@ -107,7 +111,7 @@ func (h *Handler) InitiateCall(c *fiber.Ctx) error {
 				Token:      calleeToken, // Передаем токен для прямого подключения
 			}
 
-			if err := h.service.pushService.SendCallNotification(c.Context(), call.CalleeID, pushData); err != nil {
+			if err := h.service.pushService.SendCallNotification(ctx, call.CalleeID, pushData); err != nil {
 				log.Printf("Failed to send push notification for call %s: %v", call.ID, err)
 			} else {
 				log.Printf("Push notification sent successfully for call %s", call.ID)
